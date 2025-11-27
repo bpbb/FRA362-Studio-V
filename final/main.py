@@ -40,17 +40,19 @@ def visualize(img, us, vs, depths, tomato_mask, defects, defect_mask,
     ax1 = fig.add_subplot(gs[:, 0])
     ax1.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
     
-    ax1.plot(us[tomato_mask], vs_display[tomato_mask], 'lime', linewidth=3, alpha=0.8, label='Tomato')
-    
-    # Draw edge cut lines if available
-    if cut_info is not None and cut_info.get('left_u') is not None:
-        left_u = cut_info['left_u']
-        right_u = cut_info['right_u']
+    # Plot floor points (gray) - show the actual floor points used for detrending
+    # These are the far left and far right points
+    floor_edge_points = getattr(params, 'floor_edge_points', 200)
+    valid_indices = np.where(valid)[0]
+    if len(valid_indices) >= floor_edge_points * 2:
+        left_floor_indices = valid_indices[:floor_edge_points]
+        right_floor_indices = valid_indices[-floor_edge_points:]
+        floor_indices = np.concatenate([left_floor_indices, right_floor_indices])
         
-        # Draw vertical dashed lines at cut positions
-        ax1.axvline(x=left_u, color='orange', linewidth=2, linestyle='--', 
-                   alpha=0.8, label='Edge cuts')
-        ax1.axvline(x=right_u, color='orange', linewidth=2, linestyle='--', alpha=0.8)
+        ax1.plot(us[floor_indices], vs_display[floor_indices], 'gray', linewidth=2, alpha=0.6, label='Floor')
+    
+    # Plot tomato points (lime green)
+    ax1.plot(us[tomato_mask], vs_display[tomato_mask], 'lime', linewidth=3, alpha=0.8, label='Tomato')
     
     used_positions = []
     for d in defects:
@@ -107,16 +109,26 @@ def visualize(img, us, vs, depths, tomato_mask, defects, defect_mask,
     tomato_valid = tomato_mask[valid]
     edge_valid = edge_mask[valid] if edge_mask is not None else np.zeros(valid.sum(), dtype=bool)
     
+    # Smooth depths for display (to match reference fitting)
+    smoothing_sigma = getattr(params, 'deviation_smoothing_sigma', 15)
+    depths_valid_smooth = gaussian_filter1d(depths_valid, sigma=smoothing_sigma, mode='nearest')
+    
     us_mm = pixels_to_mm(us_valid, params.cx, params.pixel_size_mm)
     
     ax2.plot(us_mm[tomato_valid], depths_valid[tomato_valid], 
             'blue', linewidth=2, label='Measured (tomato)', zorder=2)
     
-    floor_valid = valid & ~tomato_mask
-    if floor_valid.any():
-        us_floor_mm = pixels_to_mm(us[floor_valid], params.cx, params.pixel_size_mm)
-        ax2.plot(us_floor_mm, depths[floor_valid],
-                'gray', linewidth=1, alpha=0.3, label='Floor', zorder=1)
+    # Plot floor points (same as Plot 1 - far left and far right)
+    floor_edge_points = getattr(params, 'floor_edge_points', 200)
+    valid_indices = np.where(valid)[0]
+    if len(valid_indices) >= floor_edge_points * 2:
+        left_floor_indices = valid_indices[:floor_edge_points]
+        right_floor_indices = valid_indices[-floor_edge_points:]
+        floor_indices = np.concatenate([left_floor_indices, right_floor_indices])
+        
+        us_floor_mm = pixels_to_mm(us[floor_indices], params.cx, params.pixel_size_mm)
+        ax2.plot(us_floor_mm, depths[floor_indices],
+                'gray', linewidth=1, alpha=0.5, label='Floor', zorder=1)
     
     # Determine reference method label
     if edge_mask is not None and edge_mask.any():
@@ -139,13 +151,13 @@ def visualize(img, us, vs, depths, tomato_mask, defects, defect_mask,
                     title_text = f'Circular arc fit to defect-adjacent regions'
                 else:
                     title_text = f'Polynomial ({degree_name}) fit to defect-adjacent regions'
-                ref_label = 'Local reference (near defects)'
+                ref_label = 'Local reference'
             else:
                 if degree_name == "circular arc":
                     title_text = f'Circular arc fit to tomato edges'
                 else:
                     title_text = f'Polynomial ({degree_name}) fit to tomato edges'
-                ref_label = 'Edge regions (tomato ends)'
+                ref_label = 'Edge regions'
         else:
             title_text = f'{degree_name.title()} fit'
             ref_label = 'Reference points'
@@ -154,8 +166,8 @@ def visualize(img, us, vs, depths, tomato_mask, defects, defect_mask,
         ref_label = 'Reference points'
     
     if edge_valid.any():
-        ax2.scatter(us_mm[edge_valid & tomato_valid], depths_valid[edge_valid & tomato_valid],
-                   c='green', s=30, alpha=0.7, marker='s', label=ref_label, zorder=3)
+        ax2.scatter(us_mm[edge_valid & tomato_valid], depths_valid_smooth[edge_valid & tomato_valid],
+                   c='green', s=10, alpha=0.7, marker='s', label=ref_label, zorder=3)
     
     ref_valid = reference[valid]
     ref_mask = ~np.isnan(ref_valid)
@@ -174,8 +186,8 @@ def visualize(img, us, vs, depths, tomato_mask, defects, defect_mask,
         left_u_mm = pixels_to_mm(cut_info['left_u'], params.cx, params.pixel_size_mm)
         right_u_mm = pixels_to_mm(cut_info['right_u'], params.cx, params.pixel_size_mm)
         ax2.axvline(x=left_u_mm, color='orange', linewidth=2, linestyle='--', 
-                   alpha=0.8, label='Edge cuts')
-        ax2.axvline(x=right_u_mm, color='orange', linewidth=2, linestyle='--', alpha=0.8)
+                   alpha=0.4, label='Edge cuts')
+        ax2.axvline(x=right_u_mm, color='orange', linewidth=2, linestyle='--', alpha=0.4)
     
     ax2.set_xlabel('Position (mm)', fontsize=11)
     ax2.set_ylabel('Depth Z (mm)', fontsize=11)
@@ -184,6 +196,7 @@ def visualize(img, us, vs, depths, tomato_mask, defects, defect_mask,
     ax2.grid(True, alpha=0.3)
     
     if tomato_valid.any():
+        # Set Y limits (depth) based on tomato region
         tomato_depths = depths_valid[tomato_valid]
         depth_min = tomato_depths.min()
         depth_max = tomato_depths.max()
@@ -195,6 +208,15 @@ def visualize(img, us, vs, depths, tomato_mask, defects, defect_mask,
         y_max = depth_max + margin_bottom
         
         ax2.set_ylim(y_max, y_min)
+        
+        # Set X limits to zoom in on tomato region only
+        tomato_us_mm = us_mm[tomato_valid]
+        x_min = tomato_us_mm.min()
+        x_max = tomato_us_mm.max()
+        x_range = x_max - x_min
+        x_margin = x_range * 0.1  # 10% margin on each side
+        
+        ax2.set_xlim(x_min - x_margin, x_max + x_margin)
     else:
         ax2.invert_yaxis()
     
@@ -208,11 +230,11 @@ def visualize(img, us, vs, depths, tomato_mask, defects, defect_mask,
         
         valid_dev = ~np.isnan(dev_tomato)
         if valid_dev.any():
-            # Plot original deviation
+            # Plot original deviation (light blue, thin)
             ax3.plot(us_tomato[valid_dev], dev_tomato[valid_dev], 
                     'blue', linewidth=1.5, alpha=0.5, label='Deviation (raw)')
             
-            # Plot smoothed deviation
+            # Plot smoothed deviation (dark blue, thick)
             smoothing_sigma = getattr(params, 'deviation_smoothing_sigma', 15)
             dev_smooth = gaussian_filter1d(dev_tomato[valid_dev], sigma=smoothing_sigma, mode='nearest')
             ax3.plot(us_tomato[valid_dev], dev_smooth, 
@@ -222,10 +244,14 @@ def visualize(img, us, vs, depths, tomato_mask, defects, defect_mask,
             ax3.axhline(params.defect_threshold_mm, color='red', linewidth=2, 
                        linestyle='--', label=f'Threshold ({params.defect_threshold_mm}mm)')
             
-            # Show edge regions used for reference fitting (green squares)
+            # Show reference points on the SMOOTHED deviation line (green squares)
             if edge_mask is not None:
                 edge_tomato = edge_mask[tomato_mask] & valid_dev
-                ax3.scatter(us_tomato[edge_tomato], dev_tomato[edge_tomato],
+                # Get the smoothed deviation values for reference points
+                # We need to map edge_tomato indices to dev_smooth indices
+                edge_indices_in_valid = np.where(edge_tomato[valid_dev])[0]
+                ax3.scatter(us_tomato[valid_dev][edge_indices_in_valid], 
+                          dev_smooth[edge_indices_in_valid],
                           c='green', s=40, alpha=0.5, marker='s', zorder=5,
                           label='Reference points')
             
@@ -311,7 +337,7 @@ def main():
     # Preprocess stripe (lowpass, outlier removal, smoothing)
     us, vs = preprocess_stripe(us, vs, P)
     
-    # Triangulate 3D points
+    # Triangulate 3D points (includes initial detrending)
     us, vs, depths, valid = process_triangulation(us, vs, P)
     
     # Segment tomato from floor

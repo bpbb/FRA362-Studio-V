@@ -27,7 +27,7 @@ class Params:
     calibration_depth_coeffs: list = field(default_factory=lambda: [0.7685120302546002, -16.55315145092963, 114.58591024625971, -249.04535429072686])
     
     # Image
-    img_path: str = r"C:\fibo\3rd year_1st semester\studio\FRA362-Studio-V\26-11-Tomato\7M300011.JPG"
+    img_path: str = r"C:\fibo\3rd year_1st semester\studio\FRA362-Studio-V\26-11-Tomato\7M300013.JPG"
     
     # Cropping
     enable_crop: bool = True
@@ -67,6 +67,7 @@ class Params:
     auto_calculate_gap: bool = True
     tomato_floor_gap_mm: float = 35.0
     min_tomato_points: int = 80
+    floor_edge_points: int = 100 
     
     # Edge-Poly Reference
     edge_region_percent: float = 25.0
@@ -75,7 +76,7 @@ class Params:
     defect_adjacent_points: int = 50
     
     # Defect Detection
-    defect_threshold_mm: float = 3.0
+    defect_threshold_mm: float = 0.8
     min_defect_width_px: int = 10
     edge_exclude_percent: float = 10.0
 
@@ -93,6 +94,7 @@ class Params:
     edge_slope_threshold: float = 0.5      # mm/px - slopes above this are "steep"
     edge_min_flat_points: int = 20         # Consecutive flat points to confirm surface
     edge_smoothing_window: int = 5         # Smoothing before slope calculation
+    edge_cut_offset: int = 200             # Move cut lines inward by this many points
     
     # Healthy Point Validation (for reference creation)
     healthy_window_size: int = 15          # Buffer points for boundary detection

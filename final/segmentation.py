@@ -114,7 +114,8 @@ def cut_tomato_edges(us, depths, tomato_mask, params, verbose=True):
     This function:
     1. Extracts the tomato region
     2. Finds steep slopes at left and right edges
-    3. Updates the tomato_mask to exclude steep edge regions
+    3. Applies offset to move cuts inward
+    4. Updates the tomato_mask to exclude steep edge regions
     
     Args:
         us: X pixel coordinates (full array)
@@ -132,6 +133,7 @@ def cut_tomato_edges(us, depths, tomato_mask, params, verbose=True):
     min_flat_points = getattr(params, 'edge_min_flat_points', 20)
     smoothing_window = getattr(params, 'edge_smoothing_window', 5)
     enable_edge_cutting = getattr(params, 'enable_edge_cutting', True)
+    edge_cut_offset = getattr(params, 'edge_cut_offset', 0)  # New: offset to move cuts inward
     
     if not enable_edge_cutting:
         if verbose:
@@ -156,34 +158,62 @@ def cut_tomato_edges(us, depths, tomato_mask, params, verbose=True):
         slope_threshold_mm_per_px=slope_threshold,
         min_flat_points=min_flat_points,
         smoothing_window=smoothing_window,
-        verbose=verbose
+        verbose=False  # We'll print our own message
     )
+    
+    # Apply offset to move cuts inward (toward center)
+    left_local_offset = left_local + edge_cut_offset
+    right_local_offset = right_local - edge_cut_offset
+    
+    # Make sure we don't cross the middle
+    if left_local_offset >= right_local_offset:
+        if verbose:
+            print(f"\nEdge cutting: Offset too large, cuts would cross. Using original cuts.")
+        left_local_offset = left_local
+        right_local_offset = right_local
+    
+    # Validate
+    if left_local_offset >= right_local_offset:
+        if verbose:
+            print(f"\nEdge cutting: Invalid edges, using full range")
+        return tomato_mask, None
+    
+    if verbose:
+        original_width = len(tomato_indices)
+        new_width = right_local_offset - left_local_offset + 1
+        print(f"\nEdge Cutting:")
+        print(f"   Original tomato points: {original_width}")
+        print(f"   Slope threshold: {slope_threshold:.2f} mm/px")
+        print(f"   Offset: {edge_cut_offset} points inward")
+        print(f"   Left cut at local index: {left_local} -> {left_local_offset}")
+        print(f"   Right cut at local index: {right_local} -> {right_local_offset}")
+        print(f"   Remaining: {new_width} points ({100*new_width/original_width:.1f}%)")
     
     # Create new mask with edges cut
     tomato_mask_cut = tomato_mask.copy()
     
-    # Convert local indices to global indices and update mask
-    if left_local > 0:
-        # Remove left edge points
-        left_global_indices = tomato_indices[:left_local]
+    # Remove left edge points (including offset)
+    if left_local_offset > 0:
+        left_global_indices = tomato_indices[:left_local_offset]
         tomato_mask_cut[left_global_indices] = False
     
-    if right_local < len(tomato_indices) - 1:
-        # Remove right edge points
-        right_global_indices = tomato_indices[right_local + 1:]
+    # Remove right edge points (including offset)
+    if right_local_offset < len(tomato_indices) - 1:
+        right_global_indices = tomato_indices[right_local_offset + 1:]
         tomato_mask_cut[right_global_indices] = False
     
     # Store cutting info for visualization
     cut_info = {
-        'left_local_idx': left_local,
-        'right_local_idx': right_local,
-        'left_global_idx': tomato_indices[left_local] if left_local < len(tomato_indices) else None,
-        'right_global_idx': tomato_indices[right_local] if right_local < len(tomato_indices) else None,
-        'left_u': us_tomato[left_local] if left_local < len(us_tomato) else None,
-        'right_u': us_tomato[right_local] if right_local < len(us_tomato) else None,
+        'left_local_idx': left_local_offset,
+        'right_local_idx': right_local_offset,
+        'left_global_idx': tomato_indices[left_local_offset] if left_local_offset < len(tomato_indices) else None,
+        'right_global_idx': tomato_indices[right_local_offset] if right_local_offset < len(tomato_indices) else None,
+        'left_u': us_tomato[left_local_offset] if left_local_offset < len(us_tomato) else None,
+        'right_u': us_tomato[right_local_offset] if right_local_offset < len(us_tomato) else None,
         'slopes': slopes,
         'original_count': len(tomato_indices),
         'new_count': tomato_mask_cut.sum(),
+        'offset_applied': edge_cut_offset,
     }
     
     return tomato_mask_cut, cut_info
@@ -347,8 +377,8 @@ def create_defect_adjacent_reference(us, depths, params, rough_defect_mask=None)
     
     TWO-PASS APPROACH:
     1. First pass: Create rough reference from outer edges
-    2. Calculate deviation and find all healthy points (deviation < threshold)
-    3. Second pass: Fit final reference through ALL healthy points
+    2. Calculate deviation, SMOOTH it, find healthy points (smoothed deviation < threshold)
+    3. Second pass: Fit final reference through SMOOTHED healthy points
     
     Args:
         us: Pixel coordinates
@@ -363,14 +393,20 @@ def create_defect_adjacent_reference(us, depths, params, rough_defect_mask=None)
     """
     n = len(us)
     
-    print(f"\nReference Surface (Two-Pass):")
+    print(f"\nReference Surface (Two-Pass with Smoothed Deviation):")
     print(f"   Total points: {n}")
     
-    # === PASS 1: Rough reference from outer edges ===
+    # === SMOOTH the depths first ===
+    smoothing_sigma = getattr(params, 'deviation_smoothing_sigma', 15)
+    depths_smooth = gaussian_filter1d(depths, sigma=smoothing_sigma, mode='nearest')
+    
+    print(f"   Smoothing depths with sigma = {smoothing_sigma}")
+    
+    # === PASS 1: Rough reference from outer edges (using smoothed depths) ===
     edge_size = max(10, int(n * params.edge_region_percent / 100.0))
     
     rough_edge_us = np.concatenate([us[:edge_size], us[-edge_size:]])
-    rough_edge_depths = np.concatenate([depths[:edge_size], depths[-edge_size:]])
+    rough_edge_depths = np.concatenate([depths_smooth[:edge_size], depths_smooth[-edge_size:]])
     
     # Fit rough reference (quadratic polynomial)
     rough_coeffs = np.polyfit(rough_edge_us, rough_edge_depths, 2)
@@ -378,16 +414,17 @@ def create_defect_adjacent_reference(us, depths, params, rough_defect_mask=None)
     
     print(f"   Pass 1: Rough reference from edges ({edge_size*2} points)")
     
-    # === Calculate deviation from rough reference ===
-    deviation = depths - rough_reference
+    # === Calculate deviation from rough reference (using smoothed depths) ===
+    deviation_smooth = depths_smooth - rough_reference
     
-    # Smooth deviation to reduce noise
-    smoothing_sigma = getattr(params, 'deviation_smoothing_sigma', 15)
-    deviation_smooth = gaussian_filter1d(deviation, sigma=smoothing_sigma, mode='nearest')
+    # Print deviation range for debugging
+    print(f"   Smoothed deviation range: {deviation_smooth.min():.2f} to {deviation_smooth.max():.2f} mm")
     
-    # === Find healthy points (deviation below threshold) ===
+    # === Find healthy points using SMOOTHED deviation ===
     threshold = params.defect_threshold_mm
     healthy_mask = deviation_smooth < threshold
+    
+    print(f"   Threshold: {threshold:.2f} mm")
     
     # Clean up: remove isolated points
     min_group = 5
@@ -400,35 +437,12 @@ def create_defect_adjacent_reference(us, depths, params, rough_defect_mask=None)
     healthy_count = healthy_mask.sum()
     healthy_percent = 100 * healthy_count / n
     
-    print(f"   Found {healthy_count} healthy points ({healthy_percent:.1f}%) below threshold")
+    print(f"   Found {healthy_count} healthy points ({healthy_percent:.1f}%) where smoothed deviation < {threshold}mm")
     
-    # === PASS 2: Fit final reference through ALL healthy points ===
+    # === PASS 2: Fit final reference through SMOOTHED healthy points ===
     if healthy_count >= 15:
         healthy_us = us[healthy_mask]
-        healthy_depths = depths[healthy_mask]
-        
-        # Filter out boundary spikes
-        if len(healthy_depths) > 20:
-            gradients = np.abs(np.diff(healthy_depths))
-            spike_threshold = 3.0
-            good_mask = np.ones(len(healthy_depths), dtype=bool)
-            
-            # Check for spikes
-            for i in range(len(gradients)):
-                if gradients[i] > spike_threshold:
-                    # Mark surrounding points as bad
-                    start = max(0, i - 1)
-                    end = min(len(good_mask), i + 3)
-                    good_mask[start:end] = False
-            
-            if good_mask.sum() >= 15:
-                healthy_us = healthy_us[good_mask]
-                healthy_depths = healthy_depths[good_mask]
-                # Update healthy_mask to reflect filtered points
-                healthy_indices = np.where(healthy_mask)[0]
-                healthy_mask_filtered = np.zeros(n, dtype=bool)
-                healthy_mask_filtered[healthy_indices[good_mask]] = True
-                healthy_mask = healthy_mask_filtered
+        healthy_depths = depths_smooth[healthy_mask]  # Use SMOOTHED depths!
         
         if params.use_circular_reference and len(healthy_us) >= 10:
             try:
@@ -446,7 +460,7 @@ def create_defect_adjacent_reference(us, depths, params, rough_defect_mask=None)
                         reference[last_valid+1:] = reference[last_valid]
                 
                 degree_name = "circular arc"
-                print(f"   Pass 2: Circular arc fit through healthy points")
+                print(f"   Pass 2: Circular arc fit through smoothed healthy points")
                 print(f"   Circle: center=({u_c:.1f}, {d_c:.1f}), R={R:.1f}mm")
             except Exception as e:
                 print(f"   Circular fit failed: {e}, using polynomial")
