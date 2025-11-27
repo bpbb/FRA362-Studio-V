@@ -27,7 +27,7 @@ class Params:
     calibration_depth_coeffs: list = field(default_factory=lambda: [0.7685120302546002, -16.55315145092963, 114.58591024625971, -249.04535429072686])
     
     # Image
-    img_path: str = r"C:\fibo\3rd year_1st semester\studio\FRA362-Studio-V\26-11-Tomato\7M300013.JPG"
+    img_path: str = r"C:\fibo\3rd year_1st semester\studio\FRA362-Studio-V\26-11-Tomato\7M300033.JPG"
     
     # Cropping
     enable_crop: bool = True
@@ -94,7 +94,7 @@ class Params:
     edge_slope_threshold: float = 0.5      # mm/px - slopes above this are "steep"
     edge_min_flat_points: int = 20         # Consecutive flat points to confirm surface
     edge_smoothing_window: int = 5         # Smoothing before slope calculation
-    edge_cut_offset: int = 200             # Move cut lines inward by this many points
+    edge_cut_offset: int = 100             # Move cut lines inward by this many points
     
     # Healthy Point Validation (for reference creation)
     healthy_window_size: int = 15          # Buffer points for boundary detection

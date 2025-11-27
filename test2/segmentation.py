@@ -724,10 +724,9 @@ def detect_defects(us, depths, tomato_mask, params):
     
     dev_rough = depths_processed - ref_rough
     
-    if params.depth_smoothing_sigma > 0:
-        deviation_sigma = params.depth_smoothing_sigma * 0.5
-        if deviation_sigma > 0:
-            dev_rough = gaussian_filter1d(dev_rough, sigma=deviation_sigma, mode='nearest')
+    # Apply full smoothing to match visualization
+    smoothing_sigma = getattr(params, 'deviation_smoothing_sigma', 15)
+    dev_rough = gaussian_filter1d(dev_rough, sigma=smoothing_sigma, mode='nearest')
     
     rough_defect_mask = dev_rough > params.defect_threshold_mm
     
@@ -767,19 +766,22 @@ def detect_defects(us, depths, tomato_mask, params):
         
         dev_tomato = depths_processed - ref_tomato
         
-        if params.depth_smoothing_sigma > 0:
-            deviation_sigma = params.depth_smoothing_sigma * 0.5
-            if deviation_sigma > 0:
-                dev_tomato = gaussian_filter1d(dev_tomato, sigma=deviation_sigma, mode='nearest')
-                print(f"   Deviation smoothing: sigma={deviation_sigma:.1f}")
+        # Apply full smoothing to match visualization (dark blue line)
+        smoothing_sigma = getattr(params, 'deviation_smoothing_sigma', 15)
+        dev_tomato_smooth = gaussian_filter1d(dev_tomato, sigma=smoothing_sigma, mode='nearest')
+        print(f"   Deviation smoothing: sigma={smoothing_sigma}")
         
-        defect_mask_tomato = dev_tomato > params.defect_threshold_mm
+        # Use smoothed deviation for defect detection
+        defect_mask_tomato = dev_tomato_smooth > params.defect_threshold_mm
         
         if params.edge_exclude_percent > 0:
             edge_margin = int(len(depths_tomato) * params.edge_exclude_percent / 100.0)
             if edge_margin > 0:
                 defect_mask_tomato[:edge_margin] = False
                 defect_mask_tomato[-edge_margin:] = False
+        
+        # Store smoothed deviation for defect measurements
+        dev_tomato = dev_tomato_smooth
     
     # Map back to full arrays
     reference = np.full(len(us), np.nan)

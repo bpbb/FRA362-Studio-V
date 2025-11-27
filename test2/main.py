@@ -172,27 +172,28 @@ def visualize(img, us, vs, depths, tomato_mask, defects, defect_mask,
     ref_valid = reference[valid]
     ref_mask = ~np.isnan(ref_valid)
     ax2.plot(us_mm[ref_mask], ref_valid[ref_mask],
-            'orange', linewidth=3, linestyle='--', label='Reference', zorder=4)
+            'orange', linewidth=2, linestyle='--', label='Reference', zorder=4)
     
+    # Plot defect markers on smoothed depths (to match reference curve)
     for d in defects:
         mask = defect_mask[valid] & (us_valid >= d['start_px']) & (us_valid <= d['end_px'])
         if mask.any():
             color = '#FF0000' if d['max_depth_mm'] > 10.0 else '#FFA500' if d['max_depth_mm'] > 5.0 else '#FFD700'
-            ax2.scatter(us_mm[mask], depths_valid[mask], c=color, s=20, 
-                       marker='v', edgecolors='darkred', linewidths=0.5, zorder=0.5)
+            ax2.scatter(us_mm[mask], depths_valid_smooth[mask], c=color, s=20, 
+                       marker='v', edgecolors='darkred', linewidths=0.5, zorder=5)
     
     # Draw edge cut lines on depth profile
     if cut_info is not None and cut_info.get('left_u') is not None:
         left_u_mm = pixels_to_mm(cut_info['left_u'], params.cx, params.pixel_size_mm)
         right_u_mm = pixels_to_mm(cut_info['right_u'], params.cx, params.pixel_size_mm)
-        ax2.axvline(x=left_u_mm, color='orange', linewidth=2, linestyle='--', 
+        ax2.axvline(x=left_u_mm, color='red', linewidth=2, linestyle='--', 
                    alpha=0.4, label='Edge cuts')
-        ax2.axvline(x=right_u_mm, color='orange', linewidth=2, linestyle='--', alpha=0.4)
+        ax2.axvline(x=right_u_mm, color='red', linewidth=2, linestyle='--', alpha=0.4)
     
     ax2.set_xlabel('Position (mm)', fontsize=11)
     ax2.set_ylabel('Depth Z (mm)', fontsize=11)
     ax2.set_title(title_text, fontsize=12, fontweight='bold')
-    ax2.legend(fontsize=8, loc='best')
+    ax2.legend(fontsize=7, loc='lower right')
     ax2.grid(True, alpha=0.3)
     
     if tomato_valid.any():
@@ -265,7 +266,7 @@ def visualize(img, us, vs, depths, tomato_mask, defects, defect_mask,
     ax3.set_xlabel('Image column (pixels)', fontsize=11)
     ax3.set_ylabel('Deviation (mm)', fontsize=11)
     ax3.set_title('Deviation Analysis', fontsize=13, fontweight='bold')
-    ax3.legend(fontsize=9)
+    ax3.legend(fontsize=7, loc='upper right')
     ax3.grid(True, alpha=0.3)
     
     plt.tight_layout()
