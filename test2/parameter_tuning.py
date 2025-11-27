@@ -75,12 +75,7 @@ def tune_laser_extraction(
     color_ratio_threshold: float = 0.5,
     min_val_fraction: float = 0.25,
     bandpass_kernel: int = 9,
-    enable_crop: bool = False,
-    crop_x_start: int = 0,
-    crop_x_end: int = -1,
-    crop_y_start: int = 0,
-    crop_y_end: int = -1,
-    save_recommendation: bool = False
+    enable_crop: bool = True
 ) -> dict:
     
     # Create params
@@ -388,8 +383,8 @@ def tune_segmentation(
 # =========================
 
 def main():
-    # tune_laser_extraction(laser_color='blue')
-    tune_segmentation(correction_factor_depth=2.5)
+    tune_laser_extraction(laser_color='green')
+    # tune_segmentation(correction_factor_depth=2.5)
 
 if __name__ == "__main__":
     main()

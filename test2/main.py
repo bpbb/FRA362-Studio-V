@@ -87,7 +87,7 @@ def visualize(img, us, vs, depths, tomato_mask, defects, defect_mask,
         used_positions.append((defect_center_u, label_v))
         
         ax1.plot([defect_center_u, defect_center_u], 
-                [label_v + 100, v_min - 5],
+                [label_v + 80, v_min - 5],
                 color=color, linewidth=2, alpha=0.7, zorder=4)
         
         ax1.text(defect_center_u, label_v, 
@@ -203,7 +203,7 @@ def visualize(img, us, vs, depths, tomato_mask, defects, defect_mask,
         depth_max = tomato_depths.max()
         depth_range = depth_max - depth_min
         
-        margin_top = depth_range * 0.20
+        margin_top = depth_range * 0.60
         margin_bottom = depth_range * 0.15
         y_min = depth_min - margin_top
         y_max = depth_max + margin_bottom
@@ -315,13 +315,6 @@ def main():
     
     # Create parameters
     P = Params()
-    
-    # OPTIONAL: Configure cropping
-    # P.enable_crop = True
-    # P.crop_x_start = 500
-    # P.crop_x_end = 1500
-    # P.crop_y_start = 200
-    # P.crop_y_end = 800
     
     # Load and preprocess image
     img, P = load_and_preprocess_image(P)

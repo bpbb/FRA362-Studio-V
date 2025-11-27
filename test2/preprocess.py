@@ -14,38 +14,38 @@ class Params:
     
     # Calibration
     camera_angle_from_laser_deg: float = 30.0
-    cam_to_object_distance_mm: float = 200.0
+    cam_to_object_distance_mm: float = 190.0
     
     # Scale correction
     use_scale_correction: bool = True
-    correction_factor_width: float = 0.25
-    correction_factor_depth: float = 2.105
+    correction_factor_depth: float = 1.0150
+    correction_factor_width: float = 2.2097
     
     # Calibration equations
     use_calibration_equations: bool = False
-    calibration_width_coeffs: list = field(default_factory=lambda: [-0.00759153275256077, 0.9435466942946986, -37.40261711439749, 481.9594021049923])
-    calibration_depth_coeffs: list = field(default_factory=lambda: [0.7685120302546002, -16.55315145092963, 114.58591024625971, -249.04535429072686])
+    calibration_width_coeffs: list = field(default_factory=lambda: [-0.007853175997287454, 1.3101108915419726, -4.990277777777898])
+    calibration_depth_coeffs: list = field(default_factory=lambda: [22.392514885958548, -239.8151800166303, 639.690287477695])
     
     # Image
-    img_path: str = r"C:\fibo\3rd year_1st semester\studio\FRA362-Studio-V\26-11-Tomato\7M300033.JPG"
+    img_path: str = r"C:\fibo\3rd year_1st semester\studio\FRA362-Studio-V\test2\test_photo\green\7M300011.JPG"
     
     # Cropping
     enable_crop: bool = True
-    crop_x_start: int = 1500      # Start x pixel
-    crop_x_end: int = 4400        # End x pixel (-1 = full width)
-    crop_y_start: int = 1200      # Start y pixel
-    crop_y_end: int = 3000        # End y pixel (-1 = full height)
+    crop_x_start: int = 1700      # Start x pixel
+    crop_x_end: int = 4300        # End x pixel (-1 = full width)
+    crop_y_start: int = 1000      # Start y pixel
+    crop_y_end: int = 2900        # End y pixel (-1 = full height)
     
     # Camera intrinsics
-    fx: float = 4719.0
-    fy: float = 4705.0
+    fx: float = 4719.1
+    fy: float = 4705.9
     cx: float = 3000.0
     cy: float = 2000.0
     dist: np.ndarray = field(default_factory=lambda: np.array([0,0,0,0,0], dtype=np.float64))
     flip_image_vertical: bool = True
     
     # Laser Extraction
-    laser_color: str = "blue"
+    laser_color: str = "green"
     bandpass_kernel: int = 9
     subpixel_halfwidth: int = 3
     color_ratio_threshold: float = 0.49
@@ -67,7 +67,7 @@ class Params:
     auto_calculate_gap: bool = True
     tomato_floor_gap_mm: float = 35.0
     min_tomato_points: int = 80
-    floor_edge_points: int = 100 
+    floor_edge_points: int = 20 
     
     # Edge-Poly Reference
     edge_region_percent: float = 25.0
@@ -76,7 +76,7 @@ class Params:
     defect_adjacent_points: int = 50
     
     # Defect Detection
-    defect_threshold_mm: float = 0.8
+    defect_threshold_mm: float = 0.7
     min_defect_width_px: int = 10
     edge_exclude_percent: float = 10.0
 
@@ -94,7 +94,7 @@ class Params:
     edge_slope_threshold: float = 0.5      # mm/px - slopes above this are "steep"
     edge_min_flat_points: int = 20         # Consecutive flat points to confirm surface
     edge_smoothing_window: int = 5         # Smoothing before slope calculation
-    edge_cut_offset: int = 100             # Move cut lines inward by this many points
+    edge_cut_offset: int = 50             # Move cut lines inward by this many points
     
     # Healthy Point Validation (for reference creation)
     healthy_window_size: int = 15          # Buffer points for boundary detection
