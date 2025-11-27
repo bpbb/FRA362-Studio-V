@@ -6,6 +6,10 @@ Blue Laser - No Light
   correction_factor: float = 3.1
   self.pixel_size_mm = avg_z / self.fx * 0.17
 
+  new:
+  calibration_width_coeffs: list = field(default_factory=lambda: [-0.00759153275256077, 0.9435466942946986, -37.40261711439749, 481.9594021049923])
+  calibration_depth_coeffs: list = field(default_factory=lambda: [0.7685120302546002, -16.55315145092963, 114.58591024625971, -249.04535429072686])
+
 Blue Laser - Red Light
   color_ratio_threshold: 0.50
   min_val_fraction:      0.25
@@ -29,3 +33,7 @@ Red Laser - Blue Light
 
   correction_factor: float = 2.2
   self.pixel_size_mm = avg_z / self.fx * 0.35
+
+  new:
+  correction_factor_width: float = 0.5
+  correction_factor_depth: float = 1.6

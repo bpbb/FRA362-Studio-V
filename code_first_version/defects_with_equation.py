@@ -10,6 +10,7 @@ import csv
 # =========================
 # PARAMETERS
 # =========================
+
 @dataclass
 class Params:
     # Calibration
@@ -18,10 +19,16 @@ class Params:
     
     # Optional scale correction
     use_scale_correction: bool = True
-    correction_factor: float = 2.2
+    correction_factor_width: float = 0.25  # For width measurements (pixel_size_mm)
+    correction_factor_depth: float = 2.105 # For depth measurements (plane_d)
+    
+    # Calibration equations (optional - more accurate than correction factors)
+    use_calibration_equations: bool = False
+    calibration_width_coeffs: list = field(default_factory=lambda: [-0.00759153275256077, 0.9435466942946986, -37.40261711439749, 481.9594021049923])
+    calibration_depth_coeffs: list = field(default_factory=lambda: [0.7685120302546002, -16.55315145092963, 114.58591024625971, -249.04535429072686])
     
     # Image
-    img_path: str = r"C:\fibo\3rd year_1st semester\studio\FRA362-Studio-V\test_photo\red\7M309893.JPG"
+    img_path: str = r"C:\fibo\3rd year_1st semester\studio\FRA362-Studio-V\test_photo\blue\7M309828.JPG"
     
     # Camera intrinsics
     fx: float = 1450.0
@@ -32,7 +39,7 @@ class Params:
     flip_image_vertical: bool = True
     
     # Laser Extraction
-    laser_color: str = "red"  # "blue", "green", "red"
+    laser_color: str = "blue"  # "blue", "green", "red"
     bandpass_kernel: int = 9
     subpixel_halfwidth: int = 3
     color_ratio_threshold: float = 0.49  # Adjust based on laser color
@@ -92,15 +99,25 @@ class Params:
         theta = np.deg2rad(self.camera_angle_from_laser_deg)
         self.plane_n = np.array([0, np.cos(theta), np.sin(theta)])
         self.plane_n /= np.linalg.norm(self.plane_n)
-        self.plane_d = -self.cam_to_object_distance_mm * np.sin(theta)
         
+        # Base plane_d calculation
+        base_plane_d = -self.cam_to_object_distance_mm * np.sin(theta)
+        
+        # Apply depth correction factor (affects triangulation/depth)
         if self.use_scale_correction:
-            self.plane_d *= self.correction_factor
+            self.plane_d = base_plane_d * self.correction_factor_depth
+        else:
+            self.plane_d = base_plane_d
         
-        # Calculate approximate pixel size at object distance
-        # At distance Z, pixel size ≈ Z / focal_length
+        # Calculate pixel size for width measurements
         avg_z = abs(self.plane_d)
-        self.pixel_size_mm = avg_z / self.fx * 0.35
+        base_pixel_size = avg_z / self.fx
+        
+        # Apply width correction factor (affects width measurements)
+        if self.use_scale_correction:
+            self.pixel_size_mm = base_pixel_size * self.correction_factor_width
+        else:
+            self.pixel_size_mm = base_pixel_size
 
 P = Params()
 
@@ -159,7 +176,7 @@ def extract_laser_color_ratio(img_bgr, params):
         color_ratio = red / (blue + green + 1e-6)
         
     else:
-        raise ValueError(f"Unknown laser color: {params.laser_color}. Use 'blue', 'green', 'red', or 'cyan'.")
+        raise ValueError(f"Unknown laser color: {params.laser_color}. Use 'blue', 'green', 'red'.")
     
     # Two-stage thresholding: brightness AND color ratio
     brightness_threshold = target.max() * params.min_val_fraction
@@ -812,6 +829,10 @@ def create_defect_adjacent_reference(us, depths, params, rough_defect_mask=None)
             # IMPROVEMENT: Adaptive margin based on defect size
             # Larger defects need wider margins to find healthy tissue
             base_margin = params.defect_adjacent_points
+            
+            # NEW: Add buffer zone to avoid including defect transition regions
+            buffer_zone = max(10, int(defect_width * 0.3))  # Buffer = 30% of defect width
+            
             if defect_width < 20:
                 # Small defect: reduce margin to avoid including distant regions
                 edge_margin = max(15, base_margin // 2)
@@ -822,14 +843,14 @@ def create_defect_adjacent_reference(us, depths, params, rough_defect_mask=None)
                 # Large defect: increase margin for better context
                 edge_margin = int(base_margin * 1.5)
             
-            # Get candidate edge points BEFORE defect
-            left_start = max(0, start_idx - edge_margin)
-            left_end = start_idx
+            # Get candidate edge points BEFORE defect (with buffer)
+            left_end = start_idx - buffer_zone  # Move away from defect edge
+            left_start = max(0, left_end - edge_margin)
             left_indices = np.arange(left_start, left_end)
             
-            # Get candidate edge points AFTER defect
-            right_start = end_idx + 1
-            right_end = min(n, end_idx + 1 + edge_margin)
+            # Get candidate edge points AFTER defect (with buffer)
+            right_start = end_idx + 1 + buffer_zone  # Move away from defect edge
+            right_end = min(n, right_start + edge_margin)
             right_indices = np.arange(right_start, right_end)
             
             # IMPROVEMENT: Validate that edge regions are actually healthier than defect
@@ -840,38 +861,119 @@ def create_defect_adjacent_reference(us, depths, params, rough_defect_mask=None)
             valid_right = False
             
             if len(left_indices) > 5:
-                left_mean_depth = depths[left_indices].mean()
-                left_std = depths[left_indices].std()
-                # Edge should be healthier (lower depth) and stable (low std)
-                if left_mean_depth < defect_mean_depth - 0.5 and left_std < 3.0:
-                    valid_left = True
+                left_depths = depths[left_indices]
+                left_mean_depth = left_depths.mean()
+                left_std = left_depths.std()
+                
+                # Check for edge spikes (rapid depth changes = triangulation errors)
+                left_gradients = np.abs(np.diff(left_depths))
+                max_gradient = left_gradients.max() if len(left_gradients) > 0 else 0
+                
+                # NEW: Check if individual points are close to baseline (not on defect slope)
+                # Find the minimum (healthiest) depth in this region as baseline
+                left_baseline = np.percentile(left_depths, 10)  # 10th percentile = healthy
+                
+                # Count how many points are within 1mm of baseline (healthy)
+                healthy_points = np.sum(np.abs(left_depths - left_baseline) < 1.0)
+                healthy_ratio = healthy_points / len(left_depths)
+                
+                # Edge must be: healthier, stable, no spikes, AND mostly at baseline
+                if (left_mean_depth < defect_mean_depth - 0.5 and 
+                    left_std < 3.0 and 
+                    max_gradient < 5.0 and
+                    healthy_ratio > 0.6):  # At least 60% points near baseline
+                    
+                    # FILTER: Keep only points within 1.5mm of baseline
+                    healthy_mask = np.abs(left_depths - left_baseline) < 1.5
+                    if healthy_mask.sum() >= 5:  # Need at least 5 healthy points
+                        left_indices = left_indices[healthy_mask]
+                        valid_left = True
                 else:
-                    # Try smaller margin
+                    # Try smaller margin, skip boundary points if they have spikes
                     edge_margin_small = max(10, edge_margin // 2)
-                    left_start = max(0, start_idx - edge_margin_small)
-                    left_indices = np.arange(left_start, left_end)
+                    left_end_new = start_idx - buffer_zone  # Still respect buffer
+                    left_start_new = max(0, left_end_new - edge_margin_small)
+                    
+                    # If at left boundary, skip first few points
+                    if left_start == 0 and left_end_new > 10:
+                        left_start_new = min(5, left_end_new - 10)
+                    
+                    left_indices = np.arange(left_start_new, left_end_new)
                     if len(left_indices) > 5:
-                        left_mean_depth = depths[left_indices].mean()
-                        left_std = depths[left_indices].std()
-                        if left_mean_depth < defect_mean_depth - 0.5 and left_std < 3.0:
-                            valid_left = True
+                        left_depths = depths[left_indices]
+                        left_mean_depth = left_depths.mean()
+                        left_std = left_depths.std()
+                        left_gradients = np.abs(np.diff(left_depths))
+                        max_gradient = left_gradients.max() if len(left_gradients) > 0 else 0
+                        left_baseline = np.percentile(left_depths, 10)
+                        healthy_points = np.sum(np.abs(left_depths - left_baseline) < 1.0)
+                        healthy_ratio = healthy_points / len(left_depths)
+                        
+                        if (left_mean_depth < defect_mean_depth - 0.5 and 
+                            left_std < 3.0 and 
+                            max_gradient < 5.0 and
+                            healthy_ratio > 0.6):
+                            # Filter to healthy points only
+                            healthy_mask = np.abs(left_depths - left_baseline) < 1.5
+                            if healthy_mask.sum() >= 5:
+                                left_indices = left_indices[healthy_mask]
+                                valid_left = True
             
             if len(right_indices) > 5:
-                right_mean_depth = depths[right_indices].mean()
-                right_std = depths[right_indices].std()
-                # Edge should be healthier (lower depth) and stable (low std)
-                if right_mean_depth < defect_mean_depth - 0.5 and right_std < 3.0:
-                    valid_right = True
+                right_depths = depths[right_indices]
+                right_mean_depth = right_depths.mean()
+                right_std = right_depths.std()
+                
+                # Check for edge spikes
+                right_gradients = np.abs(np.diff(right_depths))
+                max_gradient = right_gradients.max() if len(right_gradients) > 0 else 0
+                
+                # NEW: Check if individual points are close to baseline
+                right_baseline = np.percentile(right_depths, 10)
+                healthy_points = np.sum(np.abs(right_depths - right_baseline) < 1.0)
+                healthy_ratio = healthy_points / len(right_depths)
+                
+                # Edge must be: healthier, stable, no spikes, AND mostly at baseline
+                if (right_mean_depth < defect_mean_depth - 0.5 and 
+                    right_std < 3.0 and 
+                    max_gradient < 5.0 and
+                    healthy_ratio > 0.6):
+                    
+                    # FILTER: Keep only points within 1.5mm of baseline
+                    healthy_mask = np.abs(right_depths - right_baseline) < 1.5
+                    if healthy_mask.sum() >= 5:
+                        right_indices = right_indices[healthy_mask]
+                        valid_right = True
                 else:
-                    # Try smaller margin
+                    # Try smaller margin, skip boundary points if they have spikes
                     edge_margin_small = max(10, edge_margin // 2)
-                    right_end = min(n, end_idx + 1 + edge_margin_small)
-                    right_indices = np.arange(right_start, right_end)
+                    right_start_new = end_idx + 1 + buffer_zone  # Still respect buffer
+                    right_end_new = min(n, right_start_new + edge_margin_small)
+                    
+                    # If at right boundary, skip last few points
+                    if right_end == n and right_start_new < n - 10:
+                        right_end_new = max(right_start_new + 5, n - 5)
+                    
+                    right_indices = np.arange(right_start_new, right_end_new)
                     if len(right_indices) > 5:
-                        right_mean_depth = depths[right_indices].mean()
-                        right_std = depths[right_indices].std()
-                        if right_mean_depth < defect_mean_depth - 0.5 and right_std < 3.0:
-                            valid_right = True
+                        right_depths = depths[right_indices]
+                        right_mean_depth = right_depths.mean()
+                        right_std = right_depths.std()
+                        right_gradients = np.abs(np.diff(right_depths))
+                        max_gradient = right_gradients.max() if len(right_gradients) > 0 else 0
+                        right_baseline = np.percentile(right_depths, 10)
+                        healthy_points = np.sum(np.abs(right_depths - right_baseline) < 1.0)
+                        healthy_ratio = healthy_points / len(right_depths)
+                        
+                        if (right_mean_depth < defect_mean_depth - 0.5 and 
+                            right_std < 3.0 and 
+                            max_gradient < 5.0 and
+                            healthy_ratio > 0.6):
+                            # Filter to healthy points only
+                            healthy_mask = np.abs(right_depths - right_baseline) < 1.5
+                            if healthy_mask.sum() >= 5:
+                                right_indices = right_indices[healthy_mask]
+                                valid_right = True
             
             # IMPROVEMENT: Only use this defect if we have valid edges
             if not (valid_left or valid_right):
@@ -946,6 +1048,30 @@ def create_defect_adjacent_reference(us, depths, params, rough_defect_mask=None)
             edge_us = us[edge_mask]
             edge_depths = depths[edge_mask]
             
+            # Filter out boundary spikes before fitting
+            edge_gradients = np.abs(np.diff(edge_depths))
+            if len(edge_gradients) > 0:
+                spike_threshold = 5.0  # mm
+                # Find first and last good points (no large gradients)
+                good_start = 0
+                for i in range(min(5, len(edge_gradients))):
+                    if edge_gradients[i] > spike_threshold:
+                        good_start = i + 2  # Skip spike
+                    else:
+                        break
+                
+                good_end = len(edge_depths)
+                for i in range(max(0, len(edge_gradients) - 5), len(edge_gradients)):
+                    if edge_gradients[i] > spike_threshold:
+                        good_end = i  # Exclude from this point
+                        break
+                
+                # Keep only good region
+                if good_start < good_end and (good_end - good_start) > 10:
+                    edge_us = edge_us[good_start:good_end]
+                    edge_depths = edge_depths[good_start:good_end]
+                    print(f"   Filtered boundary spikes: using points {good_start} to {good_end}")
+            
             if params.use_circular_reference and len(edge_us) >= 10:
                 try:
                     u_arc, d_arc, (u_c, d_c, R) = fit_circular_arc(edge_us, edge_depths)
@@ -969,6 +1095,30 @@ def create_defect_adjacent_reference(us, depths, params, rough_defect_mask=None)
         
         edge_us = us[edge_mask]
         edge_depths = depths[edge_mask]
+        
+        # Filter out boundary spikes before fitting
+        edge_gradients = np.abs(np.diff(edge_depths))
+        if len(edge_gradients) > 0:
+            spike_threshold = 5.0  # mm
+            # Find first and last good points (no large gradients)
+            good_start = 0
+            for i in range(min(5, len(edge_gradients))):
+                if edge_gradients[i] > spike_threshold:
+                    good_start = i + 2  # Skip spike
+                else:
+                    break
+            
+            good_end = len(edge_depths)
+            for i in range(max(0, len(edge_gradients) - 5), len(edge_gradients)):
+                if edge_gradients[i] > spike_threshold:
+                    good_end = i  # Exclude from this point
+                    break
+            
+            # Keep only good region
+            if good_start < good_end and (good_end - good_start) > 10:
+                edge_us = edge_us[good_start:good_end]
+                edge_depths = edge_depths[good_start:good_end]
+                print(f"   Filtered boundary spikes: using points {good_start} to {good_end}")
         
         if params.use_circular_reference and len(edge_us) >= 10:
             # Fit circular arc to edges
@@ -1003,6 +1153,49 @@ def create_defect_adjacent_reference(us, depths, params, rough_defect_mask=None)
             )
     
     return reference, edge_mask, degree_name
+
+
+def apply_calibration_equations(defects, params):
+    """
+    Apply polynomial calibration equations to defect measurements.
+    
+    This corrects the measured values to actual values using fitted polynomials.
+    Only applies if use_calibration_equations=True and coefficients are provided.
+    """
+    if not params.use_calibration_equations:
+        return defects
+    
+    if not params.calibration_width_coeffs and not params.calibration_depth_coeffs:
+        return defects
+    
+    calibrated_defects = []
+    
+    for defect in defects:
+        calib_defect = defect.copy()
+        
+        # Apply width calibration
+        if params.calibration_width_coeffs:
+            measured_width = defect['width_mm']
+            calibrated_width = np.polyval(params.calibration_width_coeffs, measured_width)
+            calib_defect['width_mm_raw'] = measured_width
+            calib_defect['width_mm'] = calibrated_width
+        
+        # Apply depth calibration
+        if params.calibration_depth_coeffs:
+            measured_depth = defect['max_depth_mm']
+            measured_mean_depth = defect['mean_depth_mm']
+            
+            calibrated_max_depth = np.polyval(params.calibration_depth_coeffs, measured_depth)
+            calibrated_mean_depth = np.polyval(params.calibration_depth_coeffs, measured_mean_depth)
+            
+            calib_defect['max_depth_mm_raw'] = measured_depth
+            calib_defect['mean_depth_mm_raw'] = measured_mean_depth
+            calib_defect['max_depth_mm'] = calibrated_max_depth
+            calib_defect['mean_depth_mm'] = calibrated_mean_depth
+        
+        calibrated_defects.append(calib_defect)
+    
+    return calibrated_defects
 
 
 # =========================
@@ -1458,18 +1651,52 @@ def save_results(us, vs, depths, tomato_mask, reference, defects, defect_mask, p
     with open(summary_file, 'w') as f:
         f.write("DEFECT DETECTION SUMMARY\n")
         f.write("="*70 + "\n\n")
+        
+        if params.use_calibration_equations and (params.calibration_width_coeffs or params.calibration_depth_coeffs):
+            f.write("NOTE: Measurements below are CALIBRATED actual values\n")
+            f.write("      (Raw measured values shown in parentheses)\n\n")
+        
         f.write(f"Total defects: {len(defects)}\n\n")
         
         if defects:
-            f.write(f"{'ID':<4} {'Center(px)':<12} {'Width(px)':<10} {'Width(mm)':<10} "
-                   f"{'Max Depth(mm)':<14} {'Mean Depth(mm)':<14}\n")
-            f.write("-"*70 + "\n")
+            # Check if any defect has calibrated values
+            has_calib = any('width_mm_raw' in d or 'max_depth_mm_raw' in d for d in defects)
             
-            for d in defects:
-                f.write(f"{d['id']:<4} {d['center_px']:>10.1f}   "
-                       f"{d['width_px']:>8}   {d['width_mm']:>8.1f}   "
-                       f"{d['max_depth_mm']:>12.2f}   "
-                       f"{d['mean_depth_mm']:>12.2f}\n")
+            if has_calib:
+                f.write(f"{'ID':<4} {'Center(px)':<12} {'Width(mm)':<18} "
+                       f"{'Max Depth(mm)':<18} {'Mean Depth(mm)':<18}\n")
+                f.write("-"*80 + "\n")
+                
+                for d in defects:
+                    # Width with raw
+                    width_str = f"{d['width_mm']:>8.1f}"
+                    if 'width_mm_raw' in d:
+                        width_str += f" ({d['width_mm_raw']:>5.1f})"
+                    
+                    # Max depth with raw
+                    max_depth_str = f"{d['max_depth_mm']:>8.2f}"
+                    if 'max_depth_mm_raw' in d:
+                        max_depth_str += f" ({d['max_depth_mm_raw']:>5.2f})"
+                    
+                    # Mean depth with raw
+                    mean_depth_str = f"{d['mean_depth_mm']:>8.2f}"
+                    if 'mean_depth_mm_raw' in d:
+                        mean_depth_str += f" ({d['mean_depth_mm_raw']:>5.2f})"
+                    
+                    f.write(f"{d['id']:<4} {d['center_px']:>10.1f}   "
+                           f"{width_str:<18}   "
+                           f"{max_depth_str:<18}   "
+                           f"{mean_depth_str:<18}\n")
+            else:
+                f.write(f"{'ID':<4} {'Center(px)':<12} {'Width(px)':<10} {'Width(mm)':<10} "
+                       f"{'Max Depth(mm)':<14} {'Mean Depth(mm)':<14}\n")
+                f.write("-"*70 + "\n")
+                
+                for d in defects:
+                    f.write(f"{d['id']:<4} {d['center_px']:>10.1f}   "
+                           f"{d['width_px']:>8}   {d['width_mm']:>8.1f}   "
+                           f"{d['max_depth_mm']:>12.2f}   "
+                           f"{d['mean_depth_mm']:>12.2f}\n")
     
     print(f"Saved: {params.out_csv}")
     print(f"Saved: {summary_file}")
@@ -1484,6 +1711,25 @@ def main():
     print("  TOMATO DEFECT DETECTION - IMPROVED VERSION")
     print("  With Enhanced Outlier Removal & Lowpass Filtering")
     print("="*70)
+    
+    # ============================================================
+    # OPTIONAL: Load and apply calibration equations
+    # ============================================================
+    # Uncomment these lines to use calibration equations from correction_tuning.py:
+    
+    # calib_file = '/mnt/user-data/outputs/calibration_equations.py'
+    # width_coeffs, depth_coeffs = load_calibration_from_file(calib_file)
+    # if width_coeffs or depth_coeffs:
+    #     P.use_calibration_equations = True
+    #     P.calibration_width_coeffs = width_coeffs
+    #     P.calibration_depth_coeffs = depth_coeffs
+    
+    # OR manually set calibration coefficients (copy from correction_tuning output):
+    # P.use_calibration_equations = True
+    # P.calibration_width_coeffs = [0.234, 1.123, -0.015]  # Example: a + b*x + c*x^2
+    # P.calibration_depth_coeffs = [0.456, 0.987]          # Example: a + b*x
+    
+    # ============================================================
     
     # Load image
     print(f"\nLoading: {P.img_path}")
@@ -1569,10 +1815,19 @@ def main():
         us, depths, tomato_mask, P
     )
     
+    # Apply calibration equations if enabled
+    if P.use_calibration_equations:
+        print(f"\nApplying calibration equations...")
+        defects = apply_calibration_equations(defects, P)
+        print(f"  ✓ Calibrated {len(defects)} defect measurements")
+    
     # Print results
     print(f"\n{'='*70}")
     print(f"  RESULTS: {len(defects)} DEFECTS DETECTED")
     print(f"{'='*70}")
+    
+    if P.use_calibration_equations and (P.calibration_width_coeffs or P.calibration_depth_coeffs):
+        print(f"  (Measurements shown are CALIBRATED actual values)")
     
     if defects:
         print(f"\n{'ID':<4} {'Center':<12} {'Width':<18} {'Max Depth':<12} {'Mean Depth':<12}")
@@ -1583,6 +1838,17 @@ def main():
                   f"{d['width_px']:>4} px ({d['width_mm']:>5.1f}mm)  "
                   f"{d['max_depth_mm']:>6.2f} mm    "
                   f"{d['mean_depth_mm']:>6.2f} mm")
+            
+            # Show raw measurements if calibrated
+            if P.use_calibration_equations:
+                if 'width_mm_raw' in d:
+                    print(f"     {'':8}     Raw: ({d['width_mm_raw']:>5.1f}mm)", end='')
+                if 'max_depth_mm_raw' in d:
+                    print(f"  {d['max_depth_mm_raw']:>6.2f} mm    ", end='')
+                if 'mean_depth_mm_raw' in d:
+                    print(f"{d['mean_depth_mm_raw']:>6.2f} mm", end='')
+                if 'width_mm_raw' in d or 'max_depth_mm_raw' in d:
+                    print()  # Newline
     else:
         print("\nNO DEFECTS DETECTED - HEALTHY TOMATO!")
     
