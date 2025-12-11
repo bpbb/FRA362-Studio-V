@@ -73,8 +73,8 @@ def visualize(img, us, vs, depths, tomato_mask, defects, defect_mask,
         
         defect_center_u = d['center_px']
         
-        label_v = v_min - 300
-        min_spacing = 300
+        label_v = v_min - 100
+        min_spacing = 50
         
         for prev_u, prev_v in used_positions:
             if abs(defect_center_u - prev_u) < 200 and abs(label_v - prev_v) < min_spacing:
@@ -83,11 +83,11 @@ def visualize(img, us, vs, depths, tomato_mask, defects, defect_mask,
                 else:
                     label_v = prev_v + min_spacing
         
-        label_v = max(50, min(label_v, img.shape[0] - 50))
+        label_v = max(50, min(label_v, img.shape[0] - 300))
         used_positions.append((defect_center_u, label_v))
         
         ax1.plot([defect_center_u, defect_center_u], 
-                [label_v + 80, v_min - 5],
+                [label_v + 20, v_min - 5],
                 color=color, linewidth=2, alpha=0.7, zorder=4)
         
         ax1.text(defect_center_u, label_v, 
@@ -95,7 +95,7 @@ def visualize(img, us, vs, depths, tomato_mask, defects, defect_mask,
                 fontsize=8, ha='center', va='center',
                 bbox=dict(boxstyle='round,pad=0.7', facecolor=color, 
                          edgecolor='white', linewidth=3, alpha=0.95),
-                zorder=6)
+                zorder=4)
     
     ax1.set_title(f"Detected Defects: {len(defects)}", fontsize=16, fontweight='bold', pad=15)
     ax1.legend(loc='upper right', fontsize=11)
@@ -313,8 +313,71 @@ def main():
     print("  With Enhanced Outlier Removal & Lowpass Filtering")
     print("="*70)
     
-    # Create parameters
+    # =================================================================
+    # CONFIGURATION - Set image path and crop region here
+    # =================================================================
+    IMG_PATH = r"C:\fibo\3rd year_1st semester\studio\FRA362-Studio-V\test2\test_video_frame\C0023_000066.jpg"
+    
+    # Cropping settings
+    ENABLE_CROP = True
+    # CROP_X_START = 1700      # Start x pixel
+    # CROP_X_END = 4300        # End x pixel (-1 = full width)
+    # CROP_Y_START = 1000      # Start y pixel
+    # CROP_Y_END = 2900        # End y pixel (-1 = full height)
+    
+    # CROP_X_START = 1000
+    # CROP_X_END = 2800
+    # CROP_Y_START = 400
+    # CROP_Y_END = 1800
+
+    CROP_X_START = 540
+    CROP_X_END = 1400
+    CROP_Y_START = 300
+    CROP_Y_END = 800
+
+    LASER_COLOR = 'blue'
+
+    # FX = 4719.1
+    # FY = 4705.9
+    # CX = 3000.0
+    # CY = 2000.0
+
+    # FX = 3020.2
+    # FY = 2541.2
+    # CX = 1920.0
+    # CY = 1080.0
+
+    FX = 1510.1
+    FY = 1270.6
+    CX = 960.0
+    CY = 540.0
+
+    USE_SCALE_CORRECTION = False
+    CORRECTION_FACTOR_DEPTH = 0.9578
+    CORRECTION_FACTOR_WIDTH = 2.2080
+    
+    # =================================================================
+    
+    # Create parameters with system defaults
     P = Params()
+    
+    # Apply image path and crop settings
+    P.img_path = IMG_PATH
+    P.laser_color = LASER_COLOR
+    P.enable_crop = ENABLE_CROP
+    P.crop_x_start = CROP_X_START
+    P.crop_x_end = CROP_X_END
+    P.crop_y_start = CROP_Y_START
+    P.crop_y_end = CROP_Y_END
+    P.fx = FX
+    P.fy = FY
+    P.cx = CX
+    P.cy = CY
+    P.use_scale_correction = USE_SCALE_CORRECTION
+    P.correction_factor_depth = CORRECTION_FACTOR_DEPTH
+    P.correction_factor_width = CORRECTION_FACTOR_WIDTH
+
+    P._recalculate_derived_params()
     
     # Load and preprocess image
     img, P = load_and_preprocess_image(P)

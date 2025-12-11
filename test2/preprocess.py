@@ -17,24 +17,24 @@ class Params:
     cam_to_object_distance_mm: float = 190.0
     
     # Scale correction
-    use_scale_correction: bool = True
-    correction_factor_depth: float = 1.0150
-    correction_factor_width: float = 2.2097
+    use_scale_correction: bool = False
+    correction_factor_depth: float = 1.0
+    correction_factor_width: float = 1.0
     
     # Calibration equations
     use_calibration_equations: bool = False
-    calibration_width_coeffs: list = field(default_factory=lambda: [-0.007853175997287454, 1.3101108915419726, -4.990277777777898])
-    calibration_depth_coeffs: list = field(default_factory=lambda: [22.392514885958548, -239.8151800166303, 639.690287477695])
+    calibration_width_coeffs: list = field(default_factory=lambda: [1.0, 1.0, 1.0])
+    calibration_depth_coeffs: list = field(default_factory=lambda: [1.0, 1.0, 1.0])
     
-    # Image
-    img_path: str = r"C:\fibo\3rd year_1st semester\studio\FRA362-Studio-V\test2\test_photo\green\7M300011.JPG"
+    # Image - Set these in main() before processing
+    img_path: str = ""
     
-    # Cropping
-    enable_crop: bool = True
-    crop_x_start: int = 1700      # Start x pixel
-    crop_x_end: int = 4300        # End x pixel (-1 = full width)
-    crop_y_start: int = 1000      # Start y pixel
-    crop_y_end: int = 2900        # End y pixel (-1 = full height)
+    # Cropping - Set these in main() before processing
+    enable_crop: bool = False
+    crop_x_start: int = 0         # Start x pixel
+    crop_x_end: int = -1          # End x pixel (-1 = full width)
+    crop_y_start: int = 0         # Start y pixel
+    crop_y_end: int = -1          # End y pixel (-1 = full height)
     
     # Camera intrinsics
     fx: float = 4719.1
@@ -45,7 +45,7 @@ class Params:
     flip_image_vertical: bool = True
     
     # Laser Extraction
-    laser_color: str = "green"
+    laser_color: str = ""
     bandpass_kernel: int = 9
     subpixel_halfwidth: int = 3
     color_ratio_threshold: float = 0.49
@@ -94,7 +94,7 @@ class Params:
     edge_slope_threshold: float = 0.5      # mm/px - slopes above this are "steep"
     edge_min_flat_points: int = 20         # Consecutive flat points to confirm surface
     edge_smoothing_window: int = 5         # Smoothing before slope calculation
-    edge_cut_offset: int = 50             # Move cut lines inward by this many points
+    edge_cut_offset: int = 0  # 20, 50    # Move cut lines inward by this many points
     
     # Healthy Point Validation (for reference creation)
     healthy_window_size: int = 15          # Buffer points for boundary detection
@@ -111,6 +111,10 @@ class Params:
     pixel_size_mm: float = field(init=False)
     
     def __post_init__(self):
+        self._recalculate_derived_params()
+    
+    def _recalculate_derived_params(self):
+        """Recalculate derived parameters based on current values."""
         self.K = np.array([[self.fx, 0, self.cx], 
                           [0, self.fy, self.cy], 
                           [0, 0, 1]], dtype=np.float64)

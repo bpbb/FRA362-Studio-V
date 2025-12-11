@@ -383,7 +383,7 @@ def tune_segmentation(
 # =========================
 
 def main():
-    tune_laser_extraction(laser_color='green')
+    tune_laser_extraction(laser_color='blue')
     # tune_segmentation(correction_factor_depth=2.5)
 
 if __name__ == "__main__":
