@@ -38,8 +38,8 @@ def find_tomato_edges_by_slope(us, depths, slope_threshold_mm_per_px=0.5,
     n = len(depths)
     
     if n < min_flat_points * 2:
-        if verbose:
-            print(f"   Edge cutting: Too few points ({n}), skipping")
+        # if verbose:
+            # print(f"   Edge cutting: Too few points ({n}), skipping")
         return 0, n - 1, None
     
     # Smooth depths for more stable slope calculation
@@ -49,46 +49,40 @@ def find_tomato_edges_by_slope(us, depths, slope_threshold_mm_per_px=0.5,
         depths_smooth = depths.copy()
     
     # Calculate slopes (change in depth per pixel)
-    # Positive slope = going deeper (toward floor)
-    # Negative slope = going shallower (toward camera/tomato top)
     slopes = np.diff(depths_smooth)
-    slopes = np.concatenate([[0], slopes])  # Pad to same length
+    slopes = np.concatenate([[0], slopes])
     
-    # Also calculate absolute slope for detecting any steep region
     abs_slopes = np.abs(slopes)
     
     # === Find LEFT edge (scan from left toward center) ===
     left_idx = 0
     flat_count = 0
     
-    for i in range(n // 2):  # Only scan first half
+    for i in range(n // 2):
         if abs_slopes[i] < slope_threshold_mm_per_px:
             flat_count += 1
             if flat_count >= min_flat_points:
-                # Found stable flat region - this is where tomato surface starts
                 left_idx = max(0, i - min_flat_points + 1)
                 break
         else:
-            flat_count = 0  # Reset counter when steep slope found
+            flat_count = 0
     
     # === Find RIGHT edge (scan from right toward center) ===
     right_idx = n - 1
     flat_count = 0
     
-    for i in range(n - 1, n // 2, -1):  # Only scan second half
+    for i in range(n - 1, n // 2, -1):
         if abs_slopes[i] < slope_threshold_mm_per_px:
             flat_count += 1
             if flat_count >= min_flat_points:
-                # Found stable flat region - this is where tomato surface ends
                 right_idx = min(n - 1, i + min_flat_points - 1)
                 break
         else:
-            flat_count = 0  # Reset counter when steep slope found
+            flat_count = 0
     
-    # Validate results
     if left_idx >= right_idx:
-        if verbose:
-            print(f"   Edge cutting: Invalid edges found (left={left_idx}, right={right_idx}), using full range")
+        # if verbose:
+        #     print(f"   Edge cutting: Invalid edges found, using full range")
         return 0, n - 1, slopes
     
     if verbose:
@@ -96,13 +90,12 @@ def find_tomato_edges_by_slope(us, depths, slope_threshold_mm_per_px=0.5,
         new_width = right_idx - left_idx + 1
         cut_left = left_idx
         cut_right = n - 1 - right_idx
-        print(f"\nEdge Cutting (Slope-based):")
-        print(f"   Slope threshold: {slope_threshold_mm_per_px:.2f} mm/px")
-        print(f"   Original points: {original_width}")
-        print(f"   Left cut: {cut_left} points (steep edge)")
-        print(f"   Right cut: {cut_right} points (steep edge)")
-        print(f"   Remaining: {new_width} points ({100*new_width/original_width:.1f}%)")
-        print(f"   Index range: [{left_idx} : {right_idx}]")
+        # print(f"\nEdge Cutting (Slope-based):")
+        # print(f"   Slope threshold: {slope_threshold_mm_per_px:.2f} mm/px")
+        # print(f"   Original points: {original_width}")
+        # print(f"   Left cut: {cut_left} points")
+        # print(f"   Right cut: {cut_right} points")
+        # print(f"   Remaining: {new_width} points ({100*new_width/original_width:.1f}%)")
     
     return left_idx, right_idx, slopes
 
@@ -110,12 +103,6 @@ def find_tomato_edges_by_slope(us, depths, slope_threshold_mm_per_px=0.5,
 def cut_tomato_edges(us, depths, tomato_mask, params, verbose=True):
     """
     Cut steep edges from tomato region to get only the real surface.
-    
-    This function:
-    1. Extracts the tomato region
-    2. Finds steep slopes at left and right edges
-    3. Applies offset to move cuts inward
-    4. Updates the tomato_mask to exclude steep edge regions
     
     Args:
         us: X pixel coordinates (full array)
@@ -126,94 +113,103 @@ def cut_tomato_edges(us, depths, tomato_mask, params, verbose=True):
     
     Returns:
         tomato_mask_cut: Updated mask with edges removed
-        cut_info: Dict with cutting information
+        cut_info: Dict with cutting information including tomato_width_mm
     """
-    # Get edge cutting parameters from params (with defaults)
     slope_threshold = getattr(params, 'edge_slope_threshold', 0.5)
     min_flat_points = getattr(params, 'edge_min_flat_points', 20)
     smoothing_window = getattr(params, 'edge_smoothing_window', 5)
     enable_edge_cutting = getattr(params, 'enable_edge_cutting', True)
-    edge_cut_offset = getattr(params, 'edge_cut_offset', 0)  # New: offset to move cuts inward
+    edge_cut_offset = getattr(params, 'edge_cut_offset', 0)
     
     if not enable_edge_cutting:
-        if verbose:
-            print(f"\nEdge cutting: Disabled")
+        # if verbose:
+        #     print(f"\nEdge cutting: Disabled")
         return tomato_mask, None
     
-    # Extract tomato region
     tomato_indices = np.where(tomato_mask)[0]
     
     if len(tomato_indices) < 50:
-        if verbose:
-            print(f"\nEdge cutting: Too few tomato points ({len(tomato_indices)}), skipping")
+        # if verbose:
+        #     print(f"\nEdge cutting: Too few tomato points ({len(tomato_indices)}), skipping")
         return tomato_mask, None
     
-    # Get tomato data
     us_tomato = us[tomato_indices]
     depths_tomato = depths[tomato_indices]
     
-    # Find edges by slope
     left_local, right_local, slopes = find_tomato_edges_by_slope(
         us_tomato, depths_tomato,
         slope_threshold_mm_per_px=slope_threshold,
         min_flat_points=min_flat_points,
         smoothing_window=smoothing_window,
-        verbose=False  # We'll print our own message
+        verbose=False
     )
     
-    # Apply offset to move cuts inward (toward center)
     left_local_offset = left_local + edge_cut_offset
     right_local_offset = right_local - edge_cut_offset
     
-    # Make sure we don't cross the middle
     if left_local_offset >= right_local_offset:
-        if verbose:
-            print(f"\nEdge cutting: Offset too large, cuts would cross. Using original cuts.")
+        # if verbose:
+        #     print(f"\nEdge cutting: Offset too large, using original cuts.")
         left_local_offset = left_local
         right_local_offset = right_local
     
-    # Validate
     if left_local_offset >= right_local_offset:
-        if verbose:
-            print(f"\nEdge cutting: Invalid edges, using full range")
+        # if verbose:
+        #     print(f"\nEdge cutting: Invalid edges, using full range")
         return tomato_mask, None
+    
+    # Calculate tomato width
+    left_u = us_tomato[left_local] if left_local < len(us_tomato) else None
+    right_u = us_tomato[right_local] if right_local < len(us_tomato) else None
+    
+    # Use fixed width if enabled, otherwise calculate
+    if params.use_fixed_tomato_width:
+        tomato_width_mm = params.fixed_tomato_width_mm
+        tomato_width_px = tomato_width_mm / params.pixel_size_mm
+        # if verbose:
+            # print(f"   Using FIXED tomato width: {tomato_width_mm:.2f} mm")
+    else:
+        if left_u is not None and right_u is not None:
+            tomato_width_px = (right_u - left_u) * 1.4
+            tomato_width_mm = tomato_width_px * params.pixel_size_mm
+        else:
+            tomato_width_px = None
+            tomato_width_mm = None
     
     if verbose:
         original_width = len(tomato_indices)
         new_width = right_local_offset - left_local_offset + 1
-        print(f"\nEdge Cutting:")
-        print(f"   Original tomato points: {original_width}")
-        print(f"   Slope threshold: {slope_threshold:.2f} mm/px")
-        print(f"   Offset: {edge_cut_offset} points inward")
-        print(f"   Left cut at local index: {left_local} -> {left_local_offset}")
-        print(f"   Right cut at local index: {right_local} -> {right_local_offset}")
-        print(f"   Remaining: {new_width} points ({100*new_width/original_width:.1f}%)")
+        # print(f"\nEdge Cutting:")
+        # print(f"   Original tomato points: {original_width}")
+        # print(f"   Slope threshold: {slope_threshold:.2f} mm/px")
+        # print(f"   Offset: {edge_cut_offset} points inward")
+        # print(f"   Remaining: {new_width} points ({100*new_width/original_width:.1f}%)")
+        # if tomato_width_mm is not None and not params.use_fixed_tomato_width:
+        #     print(f"   Calculated tomato width: {tomato_width_px:.1f} px ({tomato_width_mm:.2f} mm)")
     
-    # Create new mask with edges cut
     tomato_mask_cut = tomato_mask.copy()
     
-    # Remove left edge points (including offset)
     if left_local_offset > 0:
         left_global_indices = tomato_indices[:left_local_offset]
         tomato_mask_cut[left_global_indices] = False
     
-    # Remove right edge points (including offset)
     if right_local_offset < len(tomato_indices) - 1:
         right_global_indices = tomato_indices[right_local_offset + 1:]
         tomato_mask_cut[right_global_indices] = False
     
-    # Store cutting info for visualization
     cut_info = {
         'left_local_idx': left_local_offset,
         'right_local_idx': right_local_offset,
         'left_global_idx': tomato_indices[left_local_offset] if left_local_offset < len(tomato_indices) else None,
         'right_global_idx': tomato_indices[right_local_offset] if right_local_offset < len(tomato_indices) else None,
-        'left_u': us_tomato[left_local_offset] if left_local_offset < len(us_tomato) else None,
-        'right_u': us_tomato[right_local_offset] if right_local_offset < len(us_tomato) else None,
+        'left_u': left_u,
+        'right_u': right_u,
         'slopes': slopes,
         'original_count': len(tomato_indices),
         'new_count': tomato_mask_cut.sum(),
         'offset_applied': edge_cut_offset,
+        'tomato_width_px': tomato_width_px,
+        'tomato_width_mm': tomato_width_mm,
     }
     
     return tomato_mask_cut, cut_info
@@ -224,16 +220,7 @@ def cut_tomato_edges(us, depths, tomato_mask, params, verbose=True):
 # =========================
 
 def auto_calculate_tomato_gap(depths, verbose=True):
-    """
-    Automatically calculate optimal tomato_floor_gap_mm based on depth data.
-    
-    Args:
-        depths: Array of depth values (should be detrended)
-        verbose: Print calculation details
-    
-    Returns:
-        float: Recommended gap value in mm
-    """
+    """Automatically calculate optimal tomato_floor_gap_mm."""
     n = len(depths)
     
     edge_size = max(5, int(n * 0.15))
@@ -266,30 +253,16 @@ def auto_calculate_tomato_gap(depths, verbose=True):
         recommended_gap = depth_range * 0.27
         status = "Good segmentation"
     
-    if verbose:
-        print(f"\nAuto-calculating tomato_floor_gap_mm:")
-        print(f"   Depth range: {depth_range:.1f} mm")
-        print(f"   Floor level: {floor_level:.1f} mm")
-        print(f"   Initial gap (20%): {initial_gap:.1f} mm")
-        print(f"   Test coverage: {tomato_percent:.1f}% tomato points")
-        print(f"   Status: {status}")
-        print(f"   Recommended gap: {recommended_gap:.1f} mm")
+    # if verbose:
+    #     print(f"\nAuto-calculating tomato_floor_gap_mm:")
+    #     print(f"   Depth range: {depth_range:.1f} mm")
+    #     print(f"   Recommended gap: {recommended_gap:.1f} mm")
     
     return recommended_gap
 
 
 def segment_tomato(depths, params):
-    """
-    Segment tomato from floor using simple threshold.
-    
-    Args:
-        depths: Depth values (detrended)
-        params: Params object
-    
-    Returns:
-        tomato_mask: Boolean mask
-        floor_level: Estimated floor depth
-    """
+    """Segment tomato from floor using simple threshold."""
     n = len(depths)
     
     edge_size = max(5, int(n * 0.15))
@@ -299,12 +272,10 @@ def segment_tomato(depths, params):
         gap_mm = auto_calculate_tomato_gap(depths, verbose=True)
     else:
         gap_mm = params.tomato_floor_gap_mm
-        print(f"\nSegmentation:")
-        print(f"   Using fixed gap: {gap_mm:.1f} mm")
+    #     print(f"\nSegmentation:")
+    #     print(f"   Using fixed gap: {gap_mm:.1f} mm")
     
-    print(f"   Floor level: {floor_level:.1f} mm")
-    print(f"   Depth range: {depths.min():.1f} - {depths.max():.1f} mm")
-    print(f"   Using gap threshold: {gap_mm:.1f} mm")
+    # print(f"   Floor level: {floor_level:.1f} mm")
     
     tomato_mask = depths < (floor_level - gap_mm)
     
@@ -316,14 +287,14 @@ def segment_tomato(depths, params):
         tomato_mask = (labeled == largest)
         
         if tomato_mask.sum() < params.min_tomato_points:
-            print(f"   WARNING: Too few points ({tomato_mask.sum()}), rejecting")
+            # print(f"   WARNING: Too few points ({tomato_mask.sum()})")
             tomato_mask = np.zeros(n, dtype=bool)
         else:
             tomato_percent = 100 * tomato_mask.sum() / n
-            print(f"   Tomato: {tomato_mask.sum()} points ({tomato_percent:.1f}%)")
+            # print(f"   Tomato: {tomato_mask.sum()} points ({tomato_percent:.1f}%)")
     else:
         tomato_mask = np.zeros(n, dtype=bool)
-        print(f"   WARNING: No tomato region found")
+        # print(f"   WARNING: No tomato region found")
     
     return tomato_mask, floor_level
 
@@ -333,15 +304,7 @@ def segment_tomato(depths, params):
 # =========================
 
 def fit_circular_arc(us, depths):
-    """
-    Fit a circular arc to points (u, depth).
-    
-    Circle equation: (u - u_c)^2 + (d - d_c)^2 = R^2
-    
-    Returns:
-        u_arc, d_arc: Arc coordinates for all u values
-        (u_c, d_c, R): Circle parameters
-    """
+    """Fit a circular arc to points."""
     u_mid = (us.max() + us.min()) / 2
     d_mid = (depths.max() + depths.min()) / 2
     r_init = max(us.max() - us.min(), depths.max() - depths.min()) / 2
@@ -372,61 +335,28 @@ def fit_circular_arc(us, depths):
 
 
 def create_defect_adjacent_reference(us, depths, params, rough_defect_mask=None):
-    """
-    Create reference surface using healthy points (where deviation < threshold).
-    
-    TWO-PASS APPROACH:
-    1. First pass: Create rough reference from outer edges
-    2. Calculate deviation, SMOOTH it, find healthy points (smoothed deviation < threshold)
-    3. Second pass: Fit final reference through SMOOTHED healthy points
-    
-    Args:
-        us: Pixel coordinates
-        depths: Depth values
-        params: Parameters
-        rough_defect_mask: Optional boolean mask (not used)
-    
-    Returns:
-        reference: Fitted reference surface
-        edge_mask: Boolean mask of healthy points used for fitting
-        degree_name: Name of fit type
-    """
+    """Create reference surface using healthy points."""
     n = len(us)
     
-    print(f"\nReference Surface (Two-Pass with Smoothed Deviation):")
-    print(f"   Total points: {n}")
+    # print(f"\nReference Surface (Two-Pass):")
+    # print(f"   Total points: {n}")
     
-    # === SMOOTH the depths first ===
     smoothing_sigma = getattr(params, 'deviation_smoothing_sigma', 15)
     depths_smooth = gaussian_filter1d(depths, sigma=smoothing_sigma, mode='nearest')
     
-    print(f"   Smoothing depths with sigma = {smoothing_sigma}")
-    
-    # === PASS 1: Rough reference from outer edges (using smoothed depths) ===
     edge_size = max(10, int(n * params.edge_region_percent / 100.0))
     
     rough_edge_us = np.concatenate([us[:edge_size], us[-edge_size:]])
     rough_edge_depths = np.concatenate([depths_smooth[:edge_size], depths_smooth[-edge_size:]])
     
-    # Fit rough reference (quadratic polynomial)
     rough_coeffs = np.polyfit(rough_edge_us, rough_edge_depths, 2)
     rough_reference = np.polyval(rough_coeffs, us)
     
-    print(f"   Pass 1: Rough reference from edges ({edge_size*2} points)")
-    
-    # === Calculate deviation from rough reference (using smoothed depths) ===
     deviation_smooth = depths_smooth - rough_reference
     
-    # Print deviation range for debugging
-    print(f"   Smoothed deviation range: {deviation_smooth.min():.2f} to {deviation_smooth.max():.2f} mm")
-    
-    # === Find healthy points using SMOOTHED deviation ===
     threshold = params.defect_threshold_mm
     healthy_mask = deviation_smooth < threshold
     
-    print(f"   Threshold: {threshold:.2f} mm")
-    
-    # Clean up: remove isolated points
     min_group = 5
     labeled, num_regions = ndimage_label(healthy_mask)
     for region_id in range(1, num_regions + 1):
@@ -435,21 +365,16 @@ def create_defect_adjacent_reference(us, depths, params, rough_defect_mask=None)
             healthy_mask[labeled == region_id] = False
     
     healthy_count = healthy_mask.sum()
-    healthy_percent = 100 * healthy_count / n
     
-    print(f"   Found {healthy_count} healthy points ({healthy_percent:.1f}%) where smoothed deviation < {threshold}mm")
-    
-    # === PASS 2: Fit final reference through SMOOTHED healthy points ===
     if healthy_count >= 15:
         healthy_us = us[healthy_mask]
-        healthy_depths = depths_smooth[healthy_mask]  # Use SMOOTHED depths!
+        healthy_depths = depths_smooth[healthy_mask]
         
         if params.use_circular_reference and len(healthy_us) >= 10:
             try:
                 u_arc, d_arc, (u_c, d_c, R) = fit_circular_arc(healthy_us, healthy_depths)
                 reference = np.interp(us, u_arc, d_arc, left=np.nan, right=np.nan)
                 
-                # Fill NaN at edges
                 valid_ref = ~np.isnan(reference)
                 if not valid_ref.all() and valid_ref.any():
                     first_valid = np.where(valid_ref)[0][0]
@@ -460,28 +385,24 @@ def create_defect_adjacent_reference(us, depths, params, rough_defect_mask=None)
                         reference[last_valid+1:] = reference[last_valid]
                 
                 degree_name = "circular arc"
-                print(f"   Pass 2: Circular arc fit through smoothed healthy points")
-                print(f"   Circle: center=({u_c:.1f}, {d_c:.1f}), R={R:.1f}mm")
-            except Exception as e:
-                print(f"   Circular fit failed: {e}, using polynomial")
+            except:
                 coeffs = np.polyfit(healthy_us, healthy_depths, params.edge_poly_degree)
                 reference = np.polyval(coeffs, us)
-                degree_name = {1: "linear", 2: "quadratic", 3: "cubic", 5: "quintic"}.get(
+                degree_name = {1: "linear", 2: "quadratic", 3: "cubic"}.get(
                     params.edge_poly_degree, f"degree-{params.edge_poly_degree}"
                 )
         else:
-            print(f"   Pass 2: Polynomial (degree {params.edge_poly_degree}) fit")
             coeffs = np.polyfit(healthy_us, healthy_depths, params.edge_poly_degree)
             reference = np.polyval(coeffs, us)
-            degree_name = {1: "linear", 2: "quadratic", 3: "cubic", 5: "quintic"}.get(
+            degree_name = {1: "linear", 2: "quadratic", 3: "cubic"}.get(
                 params.edge_poly_degree, f"degree-{params.edge_poly_degree}"
             )
-        
-        edge_mask = healthy_mask
+
+        final_deviation = depths_smooth - reference
+        healthy_mask_refined = final_deviation < threshold
+        edge_mask = healthy_mask_refined  # Use refined mask instead
         
     else:
-        # Fallback: use rough reference
-        print(f"   WARNING: Only {healthy_count} healthy points, using rough reference")
         reference = rough_reference
         edge_mask = np.zeros(n, dtype=bool)
         edge_mask[:edge_size] = True
@@ -491,232 +412,30 @@ def create_defect_adjacent_reference(us, depths, params, rough_defect_mask=None)
     return reference, edge_mask, degree_name
 
 
-def _find_defect_boundaries_by_scanning(deviation, threshold, buffer_points=15, smoothing_sigma=15):
-    """
-    Find defect boundaries by scanning from edges toward center.
-    
-    IMPROVED: 
-    1. Apply strong smoothing to deviation to remove noise
-    2. Look for where deviation leaves/returns to baseline
-    
-    Args:
-        deviation: Array of deviation values
-        threshold: Deviation threshold for defect detection
-        buffer_points: Safety buffer to exclude transition zones
-        smoothing_sigma: Gaussian smoothing sigma (higher = smoother)
-    
-    Returns:
-        left_end: Last index of left healthy region (exclusive)
-        right_start: First index of right healthy region (inclusive)
-        deviation_smooth: Smoothed deviation for visualization
-    """
-    n = len(deviation)
-    
-    # Apply STRONG smoothing to remove noise from deviation
-    deviation_smooth = gaussian_filter1d(deviation, sigma=smoothing_sigma, mode='nearest')
-    
-    # Also apply median filter to remove spikes
-    median_window = max(5, n // 100)
-    if median_window % 2 == 0:
-        median_window += 1  # Must be odd
-    deviation_smooth = median_filter(deviation_smooth, size=median_window)
-    
-    # Define baseline threshold - should be close to 0
-    baseline_threshold = threshold * 0.4  # 40% of defect threshold
-    
-    # --- LEFT SCAN: Find where surface leaves baseline ---
-    consecutive_threshold = 5
-    consecutive_above_baseline = 0
-    defect_start_left = n // 2
-    
-    for i in range(n):
-        if deviation_smooth[i] > baseline_threshold:
-            consecutive_above_baseline += 1
-            if consecutive_above_baseline >= consecutive_threshold:
-                defect_start_left = i - consecutive_threshold + 1
-                break
-        else:
-            consecutive_above_baseline = 0
-    
-    # Apply buffer
-    left_end = max(0, defect_start_left - buffer_points)
-    
-    # --- RIGHT SCAN: Find where surface returns to baseline ---
-    consecutive_above_baseline = 0
-    defect_end_right = n // 2
-    
-    for i in range(n - 1, -1, -1):
-        if deviation_smooth[i] > baseline_threshold:
-            consecutive_above_baseline += 1
-            if consecutive_above_baseline >= consecutive_threshold:
-                defect_end_right = i + consecutive_threshold - 1
-                break
-        else:
-            consecutive_above_baseline = 0
-    
-    # Apply buffer
-    right_start = min(n, defect_end_right + buffer_points + 1)
-    
-    # Validate
-    if left_end >= right_start:
-        left_end = n // 4
-        right_start = 3 * n // 4
-    
-    return left_end, right_start, deviation_smooth
-
-
-def _find_flat_healthy_regions(us, depths, defect_mask=None, 
-                                slope_threshold=0.3, min_region_size=8):
-    """
-    Find flat healthy regions for reference fitting.
-    (Legacy function - kept for compatibility)
-    """
-    n = len(depths)
-    
-    if n < min_region_size * 2:
-        mask = np.zeros(n, dtype=bool)
-        edge_size = max(5, n // 4)
-        mask[:edge_size] = True
-        mask[-edge_size:] = True
-        return mask
-    
-    depths_smooth = gaussian_filter1d(depths, sigma=3, mode='nearest')
-    slopes = np.abs(np.diff(depths_smooth))
-    slopes = np.concatenate([[0], slopes])
-    flat_mask = slopes < slope_threshold
-    
-    if defect_mask is not None:
-        flat_mask = flat_mask & ~defect_mask
-    
-    if flat_mask.any():
-        baseline_depth = np.percentile(depths[flat_mask], 20)
-    else:
-        baseline_depth = np.percentile(depths, 15)
-    
-    near_baseline = np.abs(depths - baseline_depth) < 1.5
-    healthy_mask = flat_mask & near_baseline
-    
-    labeled, num_regions = ndimage_label(healthy_mask)
-    for i in range(1, num_regions + 1):
-        region_size = (labeled == i).sum()
-        if region_size < min_region_size:
-            healthy_mask[labeled == i] = False
-    
-    return healthy_mask
-
-
-def _create_standard_edge_reference(us, depths, params):
-    """Create reference using standard edge-based fitting (no defect info)."""
-    n = len(us)
-    edge_size = max(5, int(n * params.edge_region_percent / 100.0))
-    edge_mask = np.zeros(n, dtype=bool)
-    edge_mask[:edge_size] = True
-    edge_mask[-edge_size:] = True
-    
-    print(f"\nReference Surface (Standard Edges):")
-    
-    edge_us = us[edge_mask]
-    edge_depths = depths[edge_mask]
-    
-    # Filter out boundary spikes
-    edge_gradients = np.abs(np.diff(edge_depths))
-    if len(edge_gradients) > 0:
-        spike_threshold = 5.0
-        good_start = 0
-        for i in range(min(5, len(edge_gradients))):
-            if edge_gradients[i] > spike_threshold:
-                good_start = i + 2
-            else:
-                break
-        
-        good_end = len(edge_depths)
-        for i in range(max(0, len(edge_gradients) - 5), len(edge_gradients)):
-            if edge_gradients[i] > spike_threshold:
-                good_end = i
-                break
-        
-        if good_start < good_end and (good_end - good_start) > 10:
-            edge_us = edge_us[good_start:good_end]
-            edge_depths = edge_depths[good_start:good_end]
-            print(f"   Filtered boundary spikes: using points {good_start} to {good_end}")
-    
-    if params.use_circular_reference and len(edge_us) >= 10:
-        print(f"   Method: Circular arc fit to tomato edges")
-        print(f"   Edge regions: {edge_size*2}/{n} points ({params.edge_region_percent*2:.0f}%)")
-        
-        try:
-            u_arc, d_arc, (u_c, d_c, R) = fit_circular_arc(edge_us, edge_depths)
-            reference = np.interp(us, u_arc, d_arc, left=np.nan, right=np.nan)
-            print(f"   Circle: center=({u_c:.1f}, {d_c:.1f}), radius={R:.1f}mm")
-            degree_name = "circular arc"
-        except Exception as e:
-            print(f"   WARNING: Circle fit failed ({e}), using polynomial")
-            coeffs = np.polyfit(edge_us, edge_depths, params.edge_poly_degree)
-            reference = np.polyval(coeffs, us)
-            degree_name = {1: "linear", 2: "quadratic", 3: "cubic", 5: "quintic"}.get(
-                params.edge_poly_degree, f"degree-{params.edge_poly_degree}"
-            )
-    else:
-        print(f"   Method: Polynomial (degree {params.edge_poly_degree}) fit to edges")
-        print(f"   Edge regions: {edge_size*2}/{n} points ({params.edge_region_percent*2:.0f}%)")
-        
-        coeffs = np.polyfit(edge_us, edge_depths, params.edge_poly_degree)
-        reference = np.polyval(coeffs, us)
-        degree_name = {1: "linear", 2: "quadratic", 3: "cubic", 5: "quintic"}.get(
-            params.edge_poly_degree, f"degree-{params.edge_poly_degree}"
-        )
-    
-    return reference, edge_mask, degree_name
-
-
 # =========================
 # DEFECT DETECTION
 # =========================
 
 def detect_defects(us, depths, tomato_mask, params):
-    """
-    Detect defects using two-pass defect-adjacent reference.
-    
-    Pass 1: Rough detection using standard edge-based reference
-    Pass 2: Refined detection using points adjacent to defects
-    
-    Returns:
-        defects: List of defect dictionaries
-        defect_mask_full: Boolean mask of defect regions
-        reference: Reference surface
-        edge_mask_full: Mask of edge regions used
-        degree_name: Reference method name
-    """
+    """Detect defects using two-pass defect-adjacent reference."""
     us_tomato = us[tomato_mask]
     depths_tomato = depths[tomato_mask]
     
     if len(us_tomato) < 10:
         return [], np.zeros(len(us), dtype=bool), np.full(len(us), np.nan), None, None
     
-    # Pre-smooth the depths
     if params.depth_smoothing_sigma > 0:
-        print(f"\nPre-smoothing depths:")
-        
         if params.use_median_prefilter:
             window = int(params.median_window_size)
             if window % 2 == 0:
                 window += 1
-            
             depths_clean = median_filter(depths_tomato, size=window, mode='nearest')
-            print(f"   Median filter: window={window}")
         else:
             depths_clean = depths_tomato.copy()
         
         depths_processed = gaussian_filter1d(depths_clean, sigma=params.depth_smoothing_sigma, mode='nearest')
-        print(f"   Gaussian smoothing: sigma={params.depth_smoothing_sigma:.1f}")
     else:
         depths_processed = depths_tomato.copy()
-        print(f"\nNo pre-smoothing applied")
-    
-    # PASS 1: Rough defect detection
-    print(f"\n{'='*60}")
-    print(f"PASS 1: Initial defect detection")
-    print(f"{'='*60}")
     
     ref_rough, edge_mask_rough, _ = create_defect_adjacent_reference(
         us_tomato, depths_processed, params, rough_defect_mask=None
@@ -724,7 +443,6 @@ def detect_defects(us, depths, tomato_mask, params):
     
     dev_rough = depths_processed - ref_rough
     
-    # Apply full smoothing to match visualization
     smoothing_sigma = getattr(params, 'deviation_smoothing_sigma', 15)
     dev_rough = gaussian_filter1d(dev_rough, sigma=smoothing_sigma, mode='nearest')
     
@@ -743,10 +461,8 @@ def detect_defects(us, depths, tomato_mask, params):
             rough_defect_mask[labeled_rough == i] = False
     
     num_rough_defects = (ndimage_label(rough_defect_mask)[1])
-    print(f"   Initial defects found: {num_rough_defects}")
     
     if num_rough_defects == 0:
-        print(f"   No defects detected, using standard reference")
         ref_tomato = ref_rough
         edge_mask_tomato = edge_mask_rough
         dev_tomato = dev_rough
@@ -755,23 +471,13 @@ def detect_defects(us, depths, tomato_mask, params):
             params.edge_poly_degree, f"degree-{params.edge_poly_degree}"
         )
     else:
-        # PASS 2: Refined detection
-        print(f"\n{'='*60}")
-        print(f"PASS 2: Refined defect detection")
-        print(f"{'='*60}")
-        
         ref_tomato, edge_mask_tomato, degree_name = create_defect_adjacent_reference(
             us_tomato, depths_processed, params, rough_defect_mask=rough_defect_mask
         )
         
         dev_tomato = depths_processed - ref_tomato
-        
-        # Apply full smoothing to match visualization (dark blue line)
-        smoothing_sigma = getattr(params, 'deviation_smoothing_sigma', 15)
         dev_tomato_smooth = gaussian_filter1d(dev_tomato, sigma=smoothing_sigma, mode='nearest')
-        print(f"   Deviation smoothing: sigma={smoothing_sigma}")
         
-        # Use smoothed deviation for defect detection
         defect_mask_tomato = dev_tomato_smooth > params.defect_threshold_mm
         
         if params.edge_exclude_percent > 0:
@@ -780,10 +486,8 @@ def detect_defects(us, depths, tomato_mask, params):
                 defect_mask_tomato[:edge_margin] = False
                 defect_mask_tomato[-edge_margin:] = False
         
-        # Store smoothed deviation for defect measurements
         dev_tomato = dev_tomato_smooth
     
-    # Map back to full arrays
     reference = np.full(len(us), np.nan)
     reference[tomato_mask] = ref_tomato
     
@@ -793,18 +497,10 @@ def detect_defects(us, depths, tomato_mask, params):
     edge_mask_full = np.zeros(len(us), dtype=bool)
     edge_mask_full[tomato_mask] = edge_mask_tomato
     
-    # Cluster defects into distinct regions
     defects = []
     
     if params.cluster_defects:
         labeled, num = ndimage_label(defect_mask_tomato)
-        
-        print(f"\n{'='*60}")
-        print(f"FINAL DEFECT DETECTION")
-        print(f"{'='*60}")
-        print(f"   Threshold: {params.defect_threshold_mm:.2f} mm")
-        print(f"   Min width: {params.min_defect_width_px} px")
-        print(f"   Initial regions: {num}")
         
         for i in range(1, num + 1):
             region = (labeled == i)
@@ -827,15 +523,48 @@ def detect_defects(us, depths, tomato_mask, params):
                 'indices': indices
             })
     
-    # Sort by maximum depth
     defects.sort(key=lambda d: -d['max_depth_mm'])
     
     for i, d in enumerate(defects, 1):
         d['id'] = i
+
+            # Calculate reference point percentage
+    reference_count = edge_mask_full[tomato_mask].sum()
+    tomato_count = tomato_mask.sum()
+    reference_percentage = (reference_count / tomato_count * 100) if tomato_count > 0 else 0.0
     
-    print(f"   Detected: {len(defects)} defects after filtering")
+    # print(f"\n📊 REFERENCE QUALITY CHECK:")
+    # print(f"   Reference points: {reference_count}/{tomato_count} ({reference_percentage:.1f}%)")
     
-    return defects, defect_mask_full, reference, edge_mask_full, degree_name
+    is_inverted_curvature = False
+    if len(us_tomato) > 20:
+        try:
+            # Fit quadratic to reference surface to check curvature
+            ref_tomato_valid = ~np.isnan(ref_tomato)
+            if ref_tomato_valid.sum() > 10:
+                coeffs = np.polyfit(us_tomato[ref_tomato_valid], ref_tomato[ref_tomato_valid], 2)
+                # coeffs[0] is the coefficient of x^2 (curvature)
+                # For normal tomato: negative (∩ shape - high in middle, low at edges)
+                # For inverted/wrong: positive (U shape - low in middle, high at edges)
+                
+                # print(f"coeffs[0]: {coeffs[0]}")
+                if coeffs[0] < 1e-5:  # Positive curvature = upright parabola (U-shaped)
+                    is_inverted_curvature = True
+                    # print(f"   ⚠️ WARNING: Inverted curvature detected (U-shaped reference)")
+                    # print(f"   ⚠️ Surface shape anomaly - consider CULL grade")
+        except:
+            pass  # If fitting fails, skip this check
+
+    # if reference_percentage < params.min_reference_percentage:
+    #     print(f"   ⚠️ WARNING: Reference quality LOW (< {params.min_reference_percentage}%)")
+    #     print(f"   ⚠️ Results may be UNRELIABLE - consider CULL grade")
+    # elif is_inverted_curvature:
+    #     print(f"   ⚠️ WARNING: Surface shape anomaly detected")
+    #     print(f"   ⚠️ Results may be UNRELIABLE - consider CULL grade")
+    # else:
+    #     print(f"   ✓ Reference quality acceptable")
+
+    return defects, defect_mask_full, reference, edge_mask_full, degree_name, reference_percentage, is_inverted_curvature
 
 
 # =========================
@@ -843,16 +572,7 @@ def detect_defects(us, depths, tomato_mask, params):
 # =========================
 
 def apply_calibration_equations(defects, params):
-    """
-    Apply polynomial calibration equations to defect measurements.
-    
-    Args:
-        defects: List of defect dictionaries
-        params: Params with calibration coefficients
-    
-    Returns:
-        Calibrated defects list
-    """
+    """Apply polynomial calibration equations to defect measurements."""
     if not params.use_calibration_equations:
         return defects
     
@@ -893,7 +613,7 @@ def apply_calibration_equations(defects, params):
 
 def save_results(us, vs, depths, tomato_mask, reference, defects, defect_mask, params):
     """Save detailed results to CSV."""
-    print(f"\nSaving results...")
+    # print(f"\nSaving results...")
     
     defect_ids = np.zeros(len(us), dtype=int)
     tomato_indices = np.where(tomato_mask)[0]
@@ -920,27 +640,4 @@ def save_results(us, vs, depths, tomato_mask, reference, defects, defect_mask, p
                 defect_ids[i] if defect_ids[i] > 0 else ''
             ])
     
-    summary_file = params.out_csv.replace('.csv', '_summary.txt')
-    with open(summary_file, 'w') as f:
-        f.write("DEFECT DETECTION SUMMARY\n")
-        f.write("="*70 + "\n\n")
-        
-        if params.use_calibration_equations:
-            f.write("NOTE: Measurements below are CALIBRATED actual values\n")
-            f.write("      (Raw measured values shown in parentheses)\n\n")
-        
-        f.write(f"Total defects: {len(defects)}\n\n")
-        
-        if defects:
-            f.write(f"{'ID':<4} {'Center(px)':<12} {'Width(mm)':<18} "
-                   f"{'Max Depth(mm)':<18} {'Mean Depth(mm)':<18}\n")
-            f.write("-"*80 + "\n")
-            
-            for d in defects:
-                f.write(f"{d['id']:<4} {d['center_px']:>10.1f}   "
-                       f"{d['width_mm']:>8.1f}   "
-                       f"{d['max_depth_mm']:>12.2f}   "
-                       f"{d['mean_depth_mm']:>12.2f}\n")
-    
-    print(f"Saved: {params.out_csv}")
-    print(f"Saved: {summary_file}")
+    # print(f"Saved: {params.out_csv}")

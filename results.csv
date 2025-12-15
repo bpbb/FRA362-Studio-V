@@ -1,0 +1,8 @@
+image,id,width_mm,max_depth_mm,mean_depth_mm,width_px,center_px,start_px,end_px,image_path
+C0019_000176.jpg,1,5.536,1.770,1.424,88,410.000,348,476,C:\fibo\3rd year_1st semester\studio\FRA362-Studio-V\test2\26-11-25_extracted\blue\C0019_000176.jpg
+C0019_000177.jpg,1,7.675,5.331,3.763,122,410.000,327,494,C:\fibo\3rd year_1st semester\studio\FRA362-Studio-V\test2\26-11-25_extracted\blue\C0019_000177.jpg
+C0019_000178.jpg,1,8.870,4.806,3.338,141,414.000,324,492,C:\fibo\3rd year_1st semester\studio\FRA362-Studio-V\test2\26-11-25_extracted\blue\C0019_000178.jpg
+C0019_000183.jpg,1,4.781,0.758,0.742,76,428.000,390,465,C:\fibo\3rd year_1st semester\studio\FRA362-Studio-V\test2\26-11-25_extracted\blue\C0019_000183.jpg
+C0019_000184.jpg,1,7.801,8.042,5.081,124,432.000,334,516,C:\fibo\3rd year_1st semester\studio\FRA362-Studio-V\test2\26-11-25_extracted\blue\C0019_000184.jpg
+C0019_000185.jpg,1,8.619,8.479,5.372,137,416.000,323,515,C:\fibo\3rd year_1st semester\studio\FRA362-Studio-V\test2\26-11-25_extracted\blue\C0019_000185.jpg
+C0019_000186.jpg,1,8.682,8.172,5.308,138,418.000,328,509,C:\fibo\3rd year_1st semester\studio\FRA362-Studio-V\test2\26-11-25_extracted\blue\C0019_000186.jpg

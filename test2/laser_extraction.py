@@ -97,15 +97,15 @@ def initial_lowpass_filter(us, vs, method="savgol", window=11):
         us, vs_filtered: Original us and filtered vs
     """
     if len(us) < window:
-        print(f"\nInitial lowpass: Skipped (too few points: {len(us)} < {window})")
+        # print(f"\nInitial lowpass: Skipped (too few points: {len(us)} < {window})")
         return us, vs
     
-    print(f"\n{'='*60}")
-    print(f"STAGE 1: Initial Lowpass Filtering")
-    print(f"{'='*60}")
-    print(f"   Method: {method}")
-    print(f"   Window: {window} points")
-    print(f"   Input points: {len(us)}")
+    # print(f"\n{'='*60}")
+    # print(f"STAGE 1: Initial Lowpass Filtering")
+    # print(f"{'='*60}")
+    # print(f"   Method: {method}")
+    # print(f"   Window: {window} points")
+    # print(f"   Input points: {len(us)}")
     
     vs_original = vs.copy()
     
@@ -127,8 +127,8 @@ def initial_lowpass_filter(us, vs, method="savgol", window=11):
     
     noise_removed = np.std(vs_original - vs_filtered)
     max_change = np.max(np.abs(vs_original - vs_filtered))
-    print(f"   Noise reduced: {noise_removed:.2f} px RMS")
-    print(f"   Max change: {max_change:.2f} px")
+    # print(f"   Noise reduced: {noise_removed:.2f} px RMS")
+    # print(f"   Max change: {max_change:.2f} px")
     
     return us, vs_filtered
 
@@ -147,13 +147,13 @@ def remove_outliers_from_stripe(us, vs, method="improved", params=None):
         us_clean, vs_clean: Arrays with outliers removed
     """
     if len(us) < 10:
-        print(f"\nOutlier removal: Skipped (too few points: {len(us)})")
+        # print(f"\nOutlier removal: Skipped (too few points: {len(us)})")
         return us, vs
     
-    print(f"\n{'='*60}")
-    print(f"STAGE 2: Outlier Removal ({method})")
-    print(f"{'='*60}")
-    print(f"   Input points: {len(us)}")
+    # print(f"\n{'='*60}")
+    # print(f"STAGE 2: Outlier Removal ({method})")
+    # print(f"{'='*60}")
+    # print(f"   Input points: {len(us)}")
     
     initial_count = len(us)
     
@@ -171,12 +171,12 @@ def remove_outliers_from_stripe(us, vs, method="improved", params=None):
         if outliers_stage1 > 0:
             us = us[mask_continuous]
             vs = vs[mask_continuous]
-            print(f"   2.1 Large jumps: removed {outliers_stage1} points")
-        else:
-            print(f"   2.1 Large jumps: no outliers found")
+            # print(f"   2.1 Large jumps: removed {outliers_stage1} points")
+        # else:
+            # print(f"   2.1 Large jumps: no outliers found")
         
         if len(us) < 10:
-            print(f"   WARNING: Too few points remaining ({len(us)})")
+            # print(f"   WARNING: Too few points remaining ({len(us)})")
             return us, vs
         
         # STAGE 2.2: Local median absolute deviation
@@ -205,9 +205,9 @@ def remove_outliers_from_stripe(us, vs, method="improved", params=None):
         if outliers_stage2 > 0:
             us = us[outlier_mask]
             vs = vs[outlier_mask]
-            print(f"   2.2 Local MAD: removed {outliers_stage2} points")
-        else:
-            print(f"   2.2 Local MAD: no outliers found")
+            # print(f"   2.2 Local MAD: removed {outliers_stage2} points")
+        # else:
+        #     print(f"   2.2 Local MAD: no outliers found")
         
         if len(us) < 10:
             print(f"   WARNING: Too few points remaining ({len(us)})")
@@ -226,9 +226,9 @@ def remove_outliers_from_stripe(us, vs, method="improved", params=None):
         if outliers_stage3 > 0:
             us = us[isolated_mask]
             vs = vs[isolated_mask]
-            print(f"   2.3 Isolated points: removed {outliers_stage3} points")
-        else:
-            print(f"   2.3 Isolated points: no outliers found")
+            # print(f"   2.3 Isolated points: removed {outliers_stage3} points")
+        # else:
+        #     print(f"   2.3 Isolated points: no outliers found")
     
     elif method == "statistical":
         dv = np.diff(vs)
@@ -241,7 +241,7 @@ def remove_outliers_from_stripe(us, vs, method="improved", params=None):
         mask_grad = np.abs(dv) < threshold
         
         outliers_removed = (~mask_grad).sum()
-        print(f"   Statistical: removed {outliers_removed} points")
+        # print(f"   Statistical: removed {outliers_removed} points")
         
         us = us[mask_grad]
         vs = vs[mask_grad]
@@ -266,7 +266,7 @@ def remove_outliers_from_stripe(us, vs, method="improved", params=None):
                 outlier_mask[i] = False
         
         outliers_removed = (~outlier_mask).sum()
-        print(f"   Median: removed {outliers_removed} points")
+        # print(f"   Median: removed {outliers_removed} points")
         
         us = us[outlier_mask]
         vs = vs[outlier_mask]
@@ -282,7 +282,7 @@ def remove_outliers_from_stripe(us, vs, method="improved", params=None):
         
         mask_grad = np.abs(dv) < threshold
         outliers_removed = (~mask_grad).sum()
-        print(f"   Statistical: removed {outliers_removed} points")
+        # print(f"   Statistical: removed {outliers_removed} points")
         
         us = us[mask_grad]
         vs = vs[mask_grad]
@@ -306,14 +306,14 @@ def remove_outliers_from_stripe(us, vs, method="improved", params=None):
                 outlier_mask[i] = False
         
         outliers_removed = (~outlier_mask).sum()
-        print(f"   Median: removed {outliers_removed} points")
+        # print(f"   Median: removed {outliers_removed} points")
         
         us = us[outlier_mask]
         vs = vs[outlier_mask]
     
     total_removed = initial_count - len(us)
     removal_percent = 100 * total_removed / initial_count
-    print(f"   Output points: {len(us)} ({removal_percent:.1f}% removed)")
+    # print(f"   Output points: {len(us)} ({removal_percent:.1f}% removed)")
     
     return us, vs
 
@@ -325,21 +325,21 @@ def smooth_stripe_positions(us, vs, sigma=2.0):
     Should use lower sigma since we already have initial lowpass.
     """
     if sigma <= 0 or len(us) < 5:
-        print(f"\nFinal smoothing: Skipped (sigma={sigma})")
+        # print(f"\nFinal smoothing: Skipped (sigma={sigma})")
         return us, vs
     
-    print(f"\n{'='*60}")
-    print(f"STAGE 3: Final Stripe Smoothing")
-    print(f"{'='*60}")
-    print(f"   Gaussian filter: sigma={sigma:.1f}")
+    # print(f"\n{'='*60}")
+    # print(f"STAGE 3: Final Stripe Smoothing")
+    # print(f"{'='*60}")
+    # print(f"   Gaussian filter: sigma={sigma:.1f}")
     
     vs_original = vs.copy()
     vs_smooth = gaussian_filter1d(vs, sigma=sigma, mode='nearest')
     
     smoothing_change = np.std(vs_original - vs_smooth)
     max_change = np.max(np.abs(vs_original - vs_smooth))
-    print(f"   RMS change: {smoothing_change:.2f} px")
-    print(f"   Max change: {max_change:.2f} px")
+    # print(f"   RMS change: {smoothing_change:.2f} px")
+    # print(f"   Max change: {max_change:.2f} px")
     
     return us, vs_smooth
 
@@ -374,9 +374,9 @@ def preprocess_stripe(us, vs, params):
     if params.stripe_smoothing_sigma > 0:
         us, vs = smooth_stripe_positions(us, vs, sigma=params.stripe_smoothing_sigma)
     
-    print(f"\n{'='*60}")
-    print(f"PREPROCESSING COMPLETE")
-    print(f"{'='*60}")
-    print(f"Final clean points: {len(us)}")
+    # print(f"\n{'='*60}")
+    # print(f"PREPROCESSING COMPLETE")
+    # print(f"{'='*60}")
+    # print(f"Final clean points: {len(us)}")
     
     return us, vs

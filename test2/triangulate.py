@@ -60,7 +60,7 @@ def detrend_floor_tilt(us, depths, method="linear", floor_edge_points=200):
     edge_points = min(floor_edge_points, n // 4)  # Don't use more than 25% from each side
     
     if n < edge_points * 2 + 50:
-        print(f"\nDetrending floor tilt: Not enough points ({n}), skipping")
+        # print(f"\nDetrending floor tilt: Not enough points ({n}), skipping")
         return depths, np.zeros_like(depths), np.median(depths)
     
     # Get floor points from edges
@@ -71,21 +71,21 @@ def detrend_floor_tilt(us, depths, method="linear", floor_edge_points=200):
     floor_us = us[floor_indices]
     floor_depths = depths[floor_indices]
     
-    print(f"\nDetrending floor tilt:")
-    print(f"   Using {edge_points} points from each edge (total: {edge_points*2})")
+    # print(f"\nDetrending floor tilt:")
+    # print(f"   Using {edge_points} points from each edge (total: {edge_points*2})")
     
     if method == "linear":
         coeffs = np.polyfit(floor_us, floor_depths, deg=1)
         trend = np.polyval(coeffs, us)
         
         tilt_angle = np.rad2deg(np.arctan(coeffs[0]))
-        print(f"   Linear fit: slope={coeffs[0]:.6f} mm/px ({tilt_angle:.3f} deg)")
-        print(f"   Tilt across image: {coeffs[0] * n:.2f} mm")
+        # print(f"   Linear fit: slope={coeffs[0]:.6f} mm/px ({tilt_angle:.3f} deg)")
+        # print(f"   Tilt across image: {coeffs[0] * n:.2f} mm")
         
     elif method == "polynomial":
         coeffs = np.polyfit(floor_us, floor_depths, deg=2)
         trend = np.polyval(coeffs, us)
-        print(f"   Polynomial fit (degree 2)")
+        # print(f"   Polynomial fit (degree 2)")
         
     elif method == "robust":
         from sklearn.linear_model import RANSACRegressor
@@ -93,7 +93,7 @@ def detrend_floor_tilt(us, depths, method="linear", floor_edge_points=200):
         ransac = RANSACRegressor(random_state=42)
         ransac.fit(floor_us.reshape(-1, 1), floor_depths)
         trend = ransac.predict(us.reshape(-1, 1))
-        print(f"   RANSAC robust fit")
+        # print(f"   RANSAC robust fit")
     
     # Subtract the trend (normalize to median floor level)
     floor_median = np.median(floor_depths)
@@ -105,10 +105,10 @@ def detrend_floor_tilt(us, depths, method="linear", floor_edge_points=200):
     right_floor_after = np.median(floor_depths_after[-edge_points:])
     
     correction_range = trend.max() - trend.min()
-    print(f"   Removed tilt: {correction_range:.2f} mm range")
-    print(f"   Floor level: {floor_median:.1f} mm")
-    print(f"   After detrend - Left floor: {left_floor_after:.2f}mm, Right floor: {right_floor_after:.2f}mm")
-    print(f"   Difference: {abs(left_floor_after - right_floor_after):.2f}mm (should be ~0)")
+    # print(f"   Removed tilt: {correction_range:.2f} mm range")
+    # print(f"   Floor level: {floor_median:.1f} mm")
+    # print(f"   After detrend - Left floor: {left_floor_after:.2f}mm, Right floor: {right_floor_after:.2f}mm")
+    # print(f"   Difference: {abs(left_floor_after - right_floor_after):.2f}mm (should be ~0)")
     
     return depths_detrended, trend, floor_median
 
@@ -126,10 +126,10 @@ def process_triangulation(us, vs, params, detrend_method="linear"):
         us, vs, depths: Full arrays (with NaN for invalid)
         valid: Boolean mask of valid points
     """
-    print(f"\nTriangulating 3D points...")
+    # print(f"\nTriangulating 3D points...")
     depths = triangulate(us, vs, params)
     valid = ~np.isnan(depths)
-    print(f"Valid 3D points: {valid.sum()}")
+    # print(f"Valid 3D points: {valid.sum()}")
     
     # Extract valid points
     us_valid = us[valid]

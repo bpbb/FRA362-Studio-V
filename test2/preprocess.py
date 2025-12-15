@@ -25,6 +25,9 @@ class Params:
     use_calibration_equations: bool = False
     calibration_width_coeffs: list = field(default_factory=lambda: [1.0, 1.0, 1.0])
     calibration_depth_coeffs: list = field(default_factory=lambda: [1.0, 1.0, 1.0])
+
+    use_fixed_tomato_width: bool = False   # Use fixed width instead of calculated
+    fixed_tomato_width_mm: float = 50.0    # Fixed tomato width in mm
     
     # Image - Set these in main() before processing
     img_path: str = ""
@@ -46,7 +49,7 @@ class Params:
     
     # Laser Extraction
     laser_color: str = ""
-    bandpass_kernel: int = 9
+    bandpass_kernel: int = 11 # 5 11
     subpixel_halfwidth: int = 3
     color_ratio_threshold: float = 0.49
     min_val_fraction: float = 0.24
@@ -67,7 +70,8 @@ class Params:
     auto_calculate_gap: bool = True
     tomato_floor_gap_mm: float = 35.0
     min_tomato_points: int = 80
-    floor_edge_points: int = 20 
+    floor_edge_points: int = 20
+    min_reference_percentage: float = 45.0
     
     # Edge-Poly Reference
     edge_region_percent: float = 25.0
@@ -76,7 +80,7 @@ class Params:
     defect_adjacent_points: int = 50
     
     # Defect Detection
-    defect_threshold_mm: float = 0.7
+    defect_threshold_mm: float = 0.8
     min_defect_width_px: int = 10
     edge_exclude_percent: float = 10.0
 
@@ -91,14 +95,14 @@ class Params:
     
     # Edge Cutting (slope-based)
     enable_edge_cutting: bool = True
-    edge_slope_threshold: float = 0.5      # mm/px - slopes above this are "steep"
-    edge_min_flat_points: int = 20         # Consecutive flat points to confirm surface
-    edge_smoothing_window: int = 5         # Smoothing before slope calculation
-    edge_cut_offset: int = 0  # 20, 50    # Move cut lines inward by this many points
+    edge_slope_threshold: float = 0.1      # mm/px - slopes above this are "steep" # 0.5
+    edge_min_flat_points: int = 10         # Consecutive flat points to confirm surface # 20
+    edge_smoothing_window: int = 5         # Smoothing before slope calculation # 5
+    edge_cut_offset: int = 0               # Move cut lines inward by this many points # 0,20, 50 
     
     # Healthy Point Validation (for reference creation)
     healthy_window_size: int = 15          # Buffer points for boundary detection
-    deviation_smoothing_sigma: int = 15    # Smoothing sigma for deviation curve (higher = smoother)
+    deviation_smoothing_sigma: int = 5    # Smoothing sigma for deviation curve (higher = smoother)
     
     # Output
     out_csv: str = "defects_combined.csv"
@@ -193,9 +197,9 @@ def crop_image(image, params):
                         [0, params.fy, params.cy], 
                         [0, 0, 1]], dtype=np.float64)
     
-    print(f"Cropped image: {w}x{h} -> {cropped.shape[1]}x{cropped.shape[0]}")
-    print(f"   Region: x=[{x_start}:{x_end}], y=[{y_start}:{y_end}]")
-    print(f"   Adjusted center: cx={params.cx:.1f}, cy={params.cy:.1f}")
+    # print(f"Cropped image: {w}x{h} -> {cropped.shape[1]}x{cropped.shape[0]}")
+    # print(f"   Region: x=[{x_start}:{x_end}], y=[{y_start}:{y_end}]")
+    # print(f"   Adjusted center: cx={params.cx:.1f}, cy={params.cy:.1f}")
     
     return cropped, params
 
@@ -210,11 +214,11 @@ def load_and_preprocess_image(params):
     Returns:
         Preprocessed image and updated params
     """
-    print(f"\nLoading: {params.img_path}")
+    # print(f"\nLoading: {params.img_path}")
     img = cv2.imread(params.img_path)
     if img is None:
         raise FileNotFoundError(f"Cannot read: {params.img_path}")
-    print(f"Loaded: {img.shape[1]}x{img.shape[0]}")
+    # print(f"Loaded: {img.shape[1]}x{img.shape[0]}")
     
     # Undistort
     img_u, K = undistort(img, params.K, params.dist)
